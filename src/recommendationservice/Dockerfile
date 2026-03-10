@@ -32,21 +32,21 @@ FROM base
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# get packages
+WORKDIR /app
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 RUN apk update \
     && apk add --no-cache libstdc++ \
     && rm -rf /var/cache/apk/*
 
-# get packages
-WORKDIR /recommendationservice
-
 # Grab packages from builder
 COPY --from=builder /usr/local/lib/python3.14/ /usr/local/lib/python3.14/
+COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --chown=appuser:appgroup . .
 
-# Add the application
-COPY . .
-
-# set listen port
-ENV PORT="8080"
+USER appuser
 EXPOSE 8080
 
 ENTRYPOINT ["python", "recommendation_server.py"]
