@@ -1,0 +1,28 @@
+appversion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendation-service
+spec:
+  replicas: {{.Values.recommendationServices.replicaCount}}
+  selector:
+    matchLabels:
+      app: recommendation-service
+  template:
+    metadata:
+      labels:
+        app: recommendation-service
+
+    spec:
+      containers:
+      - name: main
+        image:"{{.Values.recommendationServices.image.repository}} : {{.Values.recommendationServices.image.tag}}"
+        imagePullPolicay: {{.Values.recommendationService.image.pullPolicy}}
+        ports:
+        - containerPort: {{.Values.recommendationService.service.port}}
+        resources:
+          requests:
+            cpu: {{ .Values.recommendationService.resources.requests.cpu }}
+            memory: {{ .Values.recommendationService.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.recommendationService.resources.limits.cpu }}
+            memory: {{ .Values.recommendationService.resources.limits.memory }}

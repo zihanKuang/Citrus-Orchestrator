@@ -1,0 +1,20 @@
+global:
+  doamin: citrus.local
+  environment: production、
+
+recommendationServices:
+  replicaCount: 2
+  image:
+    repository: zihanKuang/citrus-recommendation
+    tag:latest
+    pullPolicy: IfNotPresent
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memeory: 128Mi
+  services:
+    port: 8080
