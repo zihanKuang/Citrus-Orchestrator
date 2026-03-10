@@ -11,7 +11,7 @@ spec:
   ports:
     - name: http
       protocol: TCP
-      port: {{ .Values.recommendationService.services.port }}      
-      targetPort: 8080                                       
+      port: {{ .Values.recommendationService.service.port }}      
+      targetPort: {{ .Values.recommendationService.service.targetPort }}                                  
 
   type: ClusterIP

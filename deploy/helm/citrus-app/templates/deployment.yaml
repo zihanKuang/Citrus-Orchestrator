@@ -1,4 +1,4 @@
-appversion: apps/v1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: recommendation-service
@@ -15,10 +15,10 @@ spec:
     spec:
       containers:
       - name: main
-        image:"{{.Values.recommendationService.image.repository}} : {{.Values.recommendationService.image.tag}}"
-        imagePullPolicay: {{.Values.recommendationService.image.pullPolicy}}
+        image: "{{ .Values.recommendationService.image.repository }}:{{ .Values.recommendationService.image.tag }}"
+        imagePullPolicy: {{.Values.recommendationService.image.pullPolicy}}
         ports:
-        - containerPort: {{.Values.recommendationService.service.port}}
+        - containerPort: {{.Values.recommendationService.service.targetPort}}
         resources:
           requests:
             cpu: {{ .Values.recommendationService.resources.requests.cpu }}

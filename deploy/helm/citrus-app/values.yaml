@@ -1,5 +1,5 @@
 global:
-  doamin: citrus.local
+  domain: citrus.local
   environment: production
 
 recommendationService:
@@ -15,6 +15,7 @@ recommendationService:
       memory: 256Mi
     requests:
       cpu: 100m
-      memeory: 128Mi
-  services:
+      memory: 128Mi
+  service:
     port: 80
+    targetPort: 8080
