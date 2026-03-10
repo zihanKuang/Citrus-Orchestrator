@@ -1,12 +1,12 @@
 global:
   doamin: citrus.local
-  environment: production、
+  environment: production
 
-recommendationServices:
+recommendationService:
   replicaCount: 2
   image:
     repository: zihanKuang/citrus-recommendation
-    tag:latest
+    tag: latest
     pullPolicy: IfNotPresent
 
   resources:
@@ -17,4 +17,4 @@ recommendationServices:
       cpu: 100m
       memeory: 128Mi
   services:
-    port: 8080
+    port: 80

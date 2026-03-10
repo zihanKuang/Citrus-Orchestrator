@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: recommendation-service
 spec:
-  replicas: {{.Values.recommendationServices.replicaCount}}
+  replicas: {{.Values.recommendationService.replicaCount}}
   selector:
     matchLabels:
       app: recommendation-service
@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: main
-        image:"{{.Values.recommendationServices.image.repository}} : {{.Values.recommendationServices.image.tag}}"
+        image:"{{.Values.recommendationService.image.repository}} : {{.Values.recommendationService.image.tag}}"
         imagePullPolicay: {{.Values.recommendationService.image.pullPolicy}}
         ports:
         - containerPort: {{.Values.recommendationService.service.port}}

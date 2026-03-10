@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: recommendation-service 
+  labels:
+    app: recommendation-service
+spec:
+  selector:
+    app: recommendation-service
+  
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.recommendationService.services.port }}      
+      targetPort: 8080                                       
+
+  type: ClusterIP
