@@ -2,20 +2,92 @@ global:
   domain: citrus.local
   environment: production
 
-recommendationService:
-  replicaCount: 2
-  image:
-    repository: zihanKuang/citrus-recommendation
-    tag: latest
-    pullPolicy: IfNotPresent
+services:
 
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  service:
-    port: 80
-    targetPort: 8080
+  recommendationService:
+    replicaCount: 2
+    image: {repository: zihanKuang/citrus-recommendation, tag: latest, pullPolicy: IfNotPresent }
+    resources:
+      limits: {cpu: 200m, memory: 256Mi}
+      requests: { cpu: 100m, memory: 128Mi }
+    service: {port: 80, targetPort: 8080 }
+
+  frontend:
+    replicaCount: 2
+    image: { repository: zihanKuang/citrus-frontend, tag: latest, pullPolicy: IfNotPresent }
+    resources:
+      limits: { cpu: 200m, memory: 256Mi }
+      requests: { cpu: 100m, memory: 128Mi }
+    service: { port: 80, targetPort: 8080 }
+
+  adservice:
+    replicaCount: 1
+    image: { repository: zihanKuang/citrus-adservice, tag: latest, pullPolicy: IfNotPresent }
+    resources:
+      limits: { cpu: 300m, memory: 512Mi }
+      requests: { cpu: 100m, memory: 256Mi }
+    service: { port: 9555, targetPort: 9555 }
+
+  cartservice:
+    replicaCount: 1
+    image: { repository: zihanKuang/citrus-cartservice, tag: latest, pullPolicy: IfNotPresent }
+    resources:
+      limits: { cpu: 200m, memory: 256Mi }
+      requests: { cpu: 100m, memory: 128Mi }
+    service: { port: 7070, targetPort: 7070 }
+
+  checkoutservice:
+    replicaCount: 1
+    image: { repository: zihanKuang/citrus-checkoutservice, tag: latest, pullPolicy: IfNotPresent }
+    service: { port: 5050, targetPort: 5050 }
+    resources:
+      limits: { cpu: 200m, memory: 256Mi }
+      requests: { cpu: 100m, memory: 128Mi }
+
+  currencyservice:
+    replicaCount: 1
+    image: { repository: zihanKuang/citrus-currencyservice, tag: latest, pullPolicy: IfNotPresent }
+    service: { port: 7000, targetPort: 7000 }
+    resources:
+      limits: { cpu: 200m, memory: 256Mi }
+      requests: { cpu: 100m, memory: 128Mi }
+
+  emailservice:
+    replicaCount: 1
+    image: { repository: zihanKuang/citrus-emailservice, tag: latest, pullPolicy: IfNotPresent }
+    service: { port: 8080, targetPort: 8080 }
+    resources:
+      limits: { cpu: 100m, memory: 128Mi }
+      requests: { cpu: 50m, memory: 64Mi }
+
+  paymentservice:
+    replicaCount: 1
+    image: { repository: zihanKuang/citrus-paymentservice, tag: latest, pullPolicy: IfNotPresent }
+    service: { port: 50051, targetPort: 50051 }
+    resources:
+      limits: { cpu: 100m, memory: 128Mi }
+      requests: { cpu: 50m, memory: 64Mi}
+
+  productcatalogservice:
+    replicaCount: 1
+    image: { repository: zihanKuang/citrus-productcatalogservice, tag: latest, pullPolicy: IfNotPresent }
+    service: { port: 3550, targetPort: 3550 }
+    resources:
+      limits: { cpu: 200m, memory: 256Mi }
+      requests: { cpu: 100m, memory: 128Mi }
+
+  shippingservice:
+    replicaCount: 1
+    image: { repository: zihanKuang/citrus-shippingservice, tag: latest, pullPolicy: IfNotPresent }
+    service: { port: 50051, targetPort: 50051 }
+    resources:
+      limits: { cpu: 200m, memory: 256Mi }
+      requests: { cpu: 100m, memory: 128Mi }
+
+  shoppingassistantservice:
+    replicaCount: 1
+    image: { repository: zihanKuang/citrus-shoppingassistant, tag: latest, pullPolicy: IfNotPresent }
+    service: { port: 8080, targetPort: 8080 }
+    resources:
+      limits: { cpu: 100m, memory: 128Mi }
+      requests: { cpu: 50m, memory: 64Mi }
