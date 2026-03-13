@@ -64,6 +64,14 @@ spec:
         - name: ALLOYDB_SECRET_NAME
           value: "dummy-secret"
         {{- end }}
+
+        {{- if eq $name "loadgenerator" }}
+        - name: FRONTEND_ADDR
+          value: "frontend:80"
+        - name: USERS
+          value: "10"
+        {{- end }}
+        
         ports:
         - containerPort: {{$config.service.targetPort}}
         resources:
@@ -80,6 +88,7 @@ metadata:
   name: {{ $name }} 
   labels:
     {{- include "citrus-app.labels" $ | nindent 4 }}
+    app: {{ $name }}
 spec:
   selector:
     app: {{ $name }}
