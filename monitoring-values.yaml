@@ -26,6 +26,8 @@ coreDns:
 
 # 4. Disable webhook patching to comply with GKE Warden security limits
 prometheusOperator:
+  tls:
+    enabled: false
   admissionWebhooks:
     enabled: false
     patch:
