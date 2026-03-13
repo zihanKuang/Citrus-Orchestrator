@@ -1,0 +1,48 @@
+# 1. Disable node-exporter (host access is restricted in Autopilot)
+nodeExporter:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+
+# 2. Disable Alertmanager to avoid unnecessary security policy conflicts
+alertmanager:
+  enabled: false
+
+# 3. Disable monitoring for Google-managed control plane components (restricted access)
+kubeApiServer:
+  enabled: false
+kubeLet:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+coreDns:
+  enabled: false
+
+# 4. Disable webhook patching to comply with GKE Warden security limits
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false
+
+# 5. Security hardening: Disable host networking and PID access
+prometheus:
+  prometheusSpec:
+    hostNetwork: false
+    hostPID: false
+    externalLabels: {}
+    storageSpec: {}
+
+# 6. Grafana configuration and dashboard sidecar
+grafana:
+  enabled: true
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
