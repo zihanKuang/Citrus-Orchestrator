@@ -20,6 +20,50 @@ spec:
       - name: main
         image: "{{ $config.image.repository }}:{{ $config.image.tag }}"
         imagePullPolicy: {{$config.image.pullPolicy}}
+        env:
+        - name: PORT
+          value: {{ $config.service.targetPort | quote }}
+        - name: PRODUCT_CATALOG_SERVICE_ADDR
+          value: "productcatalogservice:3550"
+        - name: CURRENCY_SERVICE_ADDR
+          value: "currencyservice:7000"
+        - name: CART_SERVICE_ADDR
+          value: "cartservice:7070"
+        - name: RECOMMENDATION_SERVICE_ADDR
+          value: "recommendationservice:8080"
+        - name: SHIPPING_SERVICE_ADDR
+          value: "shippingservice:50051"
+        - name: CHECKOUT_SERVICE_ADDR
+          value: "checkoutservice:5050"
+        - name: AD_SERVICE_ADDR
+          value: "adservice:9555"
+        - name: PAYMENT_SERVICE_ADDR
+          value: "paymentservice:50051"
+        - name: EMAIL_SERVICE_ADDR
+          value: "emailservice:8080"
+        - name: SHOPPING_ASSISTANT_SERVICE_ADDR
+          value: "shoppingassistantservice:8080"
+        - name: DISABLE_PROFILER
+          value: "1"
+        - name: DISABLE_TRACING
+          value: "1"
+        # Placeholder values to satisfy mandatory environment variable checks for shopping assitant service startup.
+        {{- if eq $name "shoppingassistantservice" }}
+        - name: PROJECT_ID
+          value: "gen-lang-client-0189893462"
+        - name: REGION
+          value: "europe-north1"
+        - name: ALLOYDB_CLUSTER_NAME
+          value: "dummy-cluster"
+        - name: ALLOYDB_INSTANCE_NAME
+          value: "dummy-instance"
+        - name: ALLOYDB_DATABASE_NAME
+          value: "dummy-db"
+        - name: ALLOYDB_TABLE_NAME
+          value: "dummy-table"
+        - name: ALLOYDB_SECRET_NAME
+          value: "dummy-secret"
+        {{- end }}
         ports:
         - containerPort: {{$config.service.targetPort}}
         resources:
@@ -45,6 +89,6 @@ spec:
       protocol: TCP
       port: {{ $config.service.port }}      
       targetPort: {{ $config.service.targetPort }}                                  
-  type: ClusterIP
+  type: {{ $config.service.type | default "ClusterIP" }}
 {{- end }}
 ---

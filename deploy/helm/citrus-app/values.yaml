@@ -4,7 +4,7 @@ global:
 
 services:
 
-  recommendationService:
+  recommendationservice:
     replicaCount: 2
     image: {repository: ghcr.io/zihankuang/citrus-recommendation, tag: latest, pullPolicy: IfNotPresent }
     resources:
@@ -14,15 +14,15 @@ services:
 
   frontend:
     replicaCount: 2
-    image: { repository: zihanKuang/citrus-frontend, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend, tag: v0.10.5, pullPolicy: IfNotPresent }
     resources:
       limits: { cpu: 200m, memory: 256Mi }
       requests: { cpu: 100m, memory: 128Mi }
-    service: { port: 80, targetPort: 8080 }
+    service: { port: 80, targetPort: 8080, type: LoadBalancer }
 
   adservice:
     replicaCount: 1
-    image: { repository: zihanKuang/citrus-adservice, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/adservice, tag: v0.10.5, pullPolicy: IfNotPresent }
     resources:
       limits: { cpu: 300m, memory: 512Mi }
       requests: { cpu: 100m, memory: 256Mi }
@@ -30,7 +30,7 @@ services:
 
   cartservice:
     replicaCount: 1
-    image: { repository: zihanKuang/citrus-cartservice, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice, tag: v0.10.5, pullPolicy: IfNotPresent }
     resources:
       limits: { cpu: 200m, memory: 256Mi }
       requests: { cpu: 100m, memory: 128Mi }
@@ -38,7 +38,7 @@ services:
 
   checkoutservice:
     replicaCount: 1
-    image: { repository: zihanKuang/citrus-checkoutservice, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/checkoutservice, tag: v0.10.5, pullPolicy: IfNotPresent }
     service: { port: 5050, targetPort: 5050 }
     resources:
       limits: { cpu: 200m, memory: 256Mi }
@@ -46,7 +46,7 @@ services:
 
   currencyservice:
     replicaCount: 1
-    image: { repository: zihanKuang/citrus-currencyservice, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/currencyservice, tag: v0.10.5, pullPolicy: IfNotPresent }
     service: { port: 7000, targetPort: 7000 }
     resources:
       limits: { cpu: 200m, memory: 256Mi }
@@ -54,7 +54,7 @@ services:
 
   emailservice:
     replicaCount: 1
-    image: { repository: zihanKuang/citrus-emailservice, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/emailservice, tag: v0.10.5, pullPolicy: IfNotPresent }
     service: { port: 8080, targetPort: 8080 }
     resources:
       limits: { cpu: 100m, memory: 128Mi }
@@ -62,7 +62,7 @@ services:
 
   paymentservice:
     replicaCount: 1
-    image: { repository: zihanKuang/citrus-paymentservice, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/paymentservice, tag: v0.10.5, pullPolicy: IfNotPresent }
     service: { port: 50051, targetPort: 50051 }
     resources:
       limits: { cpu: 100m, memory: 128Mi }
@@ -70,7 +70,7 @@ services:
 
   productcatalogservice:
     replicaCount: 1
-    image: { repository: zihanKuang/citrus-productcatalogservice, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/productcatalogservice, tag: v0.10.5, pullPolicy: IfNotPresent }
     service: { port: 3550, targetPort: 3550 }
     resources:
       limits: { cpu: 200m, memory: 256Mi }
@@ -78,7 +78,7 @@ services:
 
   shippingservice:
     replicaCount: 1
-    image: { repository: zihanKuang/citrus-shippingservice, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/shippingservice, tag: v0.10.5, pullPolicy: IfNotPresent }
     service: { port: 50051, targetPort: 50051 }
     resources:
       limits: { cpu: 200m, memory: 256Mi }
@@ -86,8 +86,8 @@ services:
 
   shoppingassistantservice:
     replicaCount: 1
-    image: { repository: zihanKuang/citrus-shoppingassistant, tag: latest, pullPolicy: IfNotPresent }
+    image: { repository: ghcr.io/zihankuang/citrus-shoppingassistant, tag: latest, pullPolicy: IfNotPresent }
     service: { port: 8080, targetPort: 8080 }
     resources:
-      limits: { cpu: 100m, memory: 128Mi }
-      requests: { cpu: 50m, memory: 64Mi }
+      limits: { cpu: 500m, memory: 512Mi }  
+      requests: { cpu: 200m, memory: 256Mi }
