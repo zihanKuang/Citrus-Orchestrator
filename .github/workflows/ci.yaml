@@ -50,6 +50,8 @@ jobs:
           filters: |
             recommendation:
               - 'src/recommendationservice/**'
+            shoppingassistant:
+              - 'src/shoppingassistantservice/**'
       
       - name: Log in to GHCR
         if: steps.filter.outputs.recommendation == 'true'
@@ -68,3 +70,21 @@ jobs:
           tags: |
             ghcr.io/${{ steps.repo.outputs.owner }}/citrus-recommendation:latest
             ghcr.io/${{ steps.repo.outputs.owner }}/citrus-recommendation:${{ github.sha }}
+
+      - name: Log in to GHCR (ShoppingAssistant)
+        if: steps.filter.outputs.shoppingassistant == 'true'
+        uses: docker/login-action@v3
+        with: 
+          registry: ghcr.io
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+
+      - name: Build and Push ShoppingAssistant
+        if: steps.filter.outputs.shoppingassistant == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./src/shoppingassistantservice 
+          push: true
+          tags: |
+            ghcr.io/${{ steps.repo.outputs.owner }}/citrus-shoppingassistant:latest
+            ghcr.io/${{ steps.repo.outputs.owner }}/citrus-shoppingassistant:${{ github.sha }}
