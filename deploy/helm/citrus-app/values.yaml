@@ -6,7 +6,7 @@ services:
 
   recommendationService:
     replicaCount: 2
-    image: {repository: zihanKuang/citrus-recommendation, tag: latest, pullPolicy: IfNotPresent }
+    image: {repository: ghcr.io/zihankuang/citrus-recommendation, tag: latest, pullPolicy: IfNotPresent }
     resources:
       limits: {cpu: 200m, memory: 256Mi}
       requests: { cpu: 100m, memory: 128Mi }
