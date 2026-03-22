@@ -19,35 +19,42 @@ spec:
       containers:
       - name: main
         image: "{{ $config.image.repository }}:{{ $config.image.tag }}"
-        imagePullPolicy: {{$config.image.pullPolicy}}
+        imagePullPolicy: {{ $config.image.pullPolicy }}
         env:
         - name: PORT
           value: {{ $config.service.targetPort | quote }}
-        - name: PRODUCT_CATALOG_SERVICE_ADDR
-          value: "productcatalogservice:3550"
-        - name: CURRENCY_SERVICE_ADDR
-          value: "currencyservice:7000"
-        - name: CART_SERVICE_ADDR
-          value: "cartservice:7070"
-        - name: RECOMMENDATION_SERVICE_ADDR
-          value: "recommendationservice:8080"
-        - name: SHIPPING_SERVICE_ADDR
-          value: "shippingservice:50051"
-        - name: CHECKOUT_SERVICE_ADDR
-          value: "checkoutservice:5050"
-        - name: AD_SERVICE_ADDR
-          value: "adservice:9555"
-        - name: PAYMENT_SERVICE_ADDR
-          value: "paymentservice:50051"
-        - name: EMAIL_SERVICE_ADDR
-          value: "emailservice:8080"
-        - name: SHOPPING_ASSISTANT_SERVICE_ADDR
-          value: "shoppingassistantservice:8080"
+
+        # 1. Inject service endpoints dynamically from values.yaml (DRY principle)
+        {{- range $envName, $envValue := $.Values.config.serviceEndpoints }}
+        - name: {{ $envName }}
+          value: {{ $envValue | quote }}
+        {{- end }}
+
         - name: DISABLE_PROFILER
           value: "1"
+
+        # 2. Advanced OpenTelemetry Tracing Logic
+        {{- if $.Values.tracing.enabled }}
+        - name: OTEL_SERVICE_NAME
+          value: {{ $name | quote }}
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: {{ $.Values.tracing.endpoint | quote }}
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: {{ $.Values.tracing.protocol | quote }}
+        - name: OTEL_TRACES_SAMPLER
+          value: {{ $.Values.tracing.sampler | quote }}
+        # Mandatory for modern SDKs to talk to non-TLS internal Jaeger
+        - name: OTEL_EXPORTER_OTLP_INSECURE
+          value: "true"
+        # Mandatory for older Google demo images to activate OTLP
+        - name: COLLECTOR_OTLP_ENABLED
+          value: "true"
+        {{- else }}
         - name: DISABLE_TRACING
           value: "1"
-        # Placeholder values to satisfy mandatory environment variable checks for shopping assitant service startup.
+        {{- end }}
+
+        # 3. Service-specific environment variables
         {{- if eq $name "shoppingassistantservice" }}
         - name: PROJECT_ID
           value: "gen-lang-client-0189893462"
@@ -92,7 +99,6 @@ metadata:
 spec:
   selector:
     app: {{ $name }}
-  
   ports:
     - name: http
       protocol: TCP
@@ -100,4 +106,3 @@ spec:
       targetPort: {{ $config.service.targetPort }}                                  
   type: {{ $config.service.type | default "ClusterIP" }}
 {{- end }}
----

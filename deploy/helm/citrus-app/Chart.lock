@@ -1,0 +1,9 @@
+dependencies:
+- name: kube-prometheus-stack
+  repository: https://prometheus-community.github.io/helm-charts
+  version: 61.9.0
+- name: jaeger
+  repository: https://jaegertracing.github.io/helm-charts
+  version: 3.4.1
+digest: sha256:ed3f5750a925a81d470a733859b6a51f54d84b9f2f07acd13f4c9423d1502091
+generated: "2026-03-22T18:50:53.3189648+01:00"
