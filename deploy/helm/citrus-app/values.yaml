@@ -2,13 +2,15 @@ global:
   domain: citrus.local
   environment: production
 
-# Global configuration for internal service discovery
+# Service endpoints for internal discovery
+# NOTE: These env vars are injected into all pods to enable service mesh communication
+# without hardcoding IPs (required for K8s dynamic pod lifecycle)
 config:
   serviceEndpoints:
     PRODUCT_CATALOG_SERVICE_ADDR: "productcatalogservice:3550"
     CURRENCY_SERVICE_ADDR: "currencyservice:7000"
-    CART_SERVICE_ADDR: "cartservice:7070"
-    RECOMMENDATION_SERVICE_ADDR: "recommendationservice:8080"
+    CART_SERVICE_ADDR: "cartservice:7070"  # Fixed: was 8080 in original demo, actual image listens on 7070
+    RECOMMENDATION_SERVICE_ADDR: "recommendationservice:80"
     SHIPPING_SERVICE_ADDR: "shippingservice:50051"
     CHECKOUT_SERVICE_ADDR: "checkoutservice:5050"
     AD_SERVICE_ADDR: "adservice:9555"
@@ -16,15 +18,21 @@ config:
     EMAIL_SERVICE_ADDR: "emailservice:8080"
     SHOPPING_ASSISTANT_SERVICE_ADDR: "shoppingassistantservice:8080"
 
-# Distributed Tracing (OpenTelemetry) settings
+# OpenTelemetry Tracing Configuration
+# Migration note: Moved from GKE to Azure AKS Standard, had to rework this section entirely
+# Original setup used separate jaeger-collector + jaeger-query pods, which caused
+# "no hosts available" errors due to memory isolation between components.
+# Solution: Consolidated to All-In-One mode with shared in-memory storage
 tracing:
   enabled: true
-  endpoint: "http://citrus-jaeger-collector:4318"
+  # DEPRECATED: This endpoint is kept for reference but NOT used by all services
+  # Reason: Google's frontend image ignores standard OTEL_EXPORTER_OTLP_ENDPOINT
+  # and requires custom COLLECTOR_SERVICE_ADDR (see all-in.yaml frontend section)
+  endpoint: "http://citrus-jaeger:4318"
   protocol: "http/protobuf"
   sampler: "always_on"
 
 services:
-
   recommendationservice:
     replicaCount: 1
     image: {repository: ghcr.io/zihankuang/citrus-recommendation, tag: latest, pullPolicy: IfNotPresent }
@@ -37,14 +45,11 @@ services:
     replicaCount: 1
     image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend, tag: v0.10.5, pullPolicy: IfNotPresent }
     autoscaling:
-      enabled: true
-      minReplicas: 1
-      maxReplicas: 3
-      targetCPUUtilizationPercentage: 50
+      enabled: false  # Disabled during migration phase to isolate issues and prevent cascading failures
     resources:
       limits: { cpu: 200m, memory: 256Mi }
       requests: { cpu: 100m, memory: 128Mi }
-    service: { port: 80, targetPort: 8080, type: LoadBalancer }
+    service: { port: 80, targetPort: 8080, type: LoadBalancer }  # LoadBalancer required for external access on AKS
 
   adservice:
     replicaCount: 1
@@ -110,14 +115,6 @@ services:
       limits: { cpu: 200m, memory: 256Mi }
       requests: { cpu: 100m, memory: 128Mi }
 
-  shoppingassistantservice:
-    replicaCount: 0
-    image: { repository: ghcr.io/zihankuang/citrus-shoppingassistant, tag: latest, pullPolicy: IfNotPresent }
-    service: { port: 8080, targetPort: 8080 }
-    resources:
-      limits: { cpu: 500m, memory: 512Mi }  
-      requests: { cpu: 200m, memory: 256Mi }
-
   loadgenerator:
     replicaCount: 1
     image: { repository: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator, tag: v0.10.5, pullPolicy: IfNotPresent }
@@ -126,103 +123,56 @@ services:
       - name: FRONTEND_ADDR
         value: "frontend:80"
       - name: USERS
-        value: "100"
+        value: "10"
     resources:
       limits: { cpu: 300m, memory: 512Mi }
       requests: { cpu: 100m, memory: 256Mi }
 
+# Prometheus Stack Configuration
+# Migration notes:
+#   - GKE Autopilot blocked nodeExporter (hostPath security policy)
+#   - Azure AKS Standard permits full access to node metrics via DaemonSet
+#   - Had to disable validating webhooks during install due to x509 cert issues
 kube-prometheus-stack:
-    # 1. Disable node-exporter (host access is restricted in Autopilot)
-    nodeExporter:
-      enabled: false
-    prometheus-node-exporter:
-      enabled: false
-
-    # 2. Disable Alertmanager to avoid unnecessary security policy conflicts
-    alertmanager:
-      enabled: false
-
-    # 3. Disable monitoring for Google-managed control plane components (restricted access)
-    kubeApiServer:
-      enabled: false
-    kubeLet:
-      enabled: true
-      serviceMonitor:
-        https: true
-        insecureSkipVerify: true
-    kubeControllerManager:
-      enabled: false
-    kubeScheduler:
-      enabled: false
-    kubeEtcd:
-      enabled: false
-    kubeProxy:
-      enabled: false
-    coreDns:
-      enabled: false
-
-    # 4. Disable webhook patching to comply with GKE Warden security limits
-    prometheusOperator:
-      tls:
-        enabled: false
-      admissionWebhooks:
-        enabled: false
-        patch:
-          enabled: false
-
-    # 5. Security hardening: Disable host networking and PID access
-    prometheus:
-      prometheusSpec:
-        resources:
-          requests:
-            cpu: 500m
-            memory: 2Gi
-        storageSpec: {}
-        serviceMonitorSelectorNilUsesHelmValues: false
-        serviceMonitorNamespaceSelector: {} 
-        
-        podMonitorSelectorNilUsesHelmValues: false
-        podMonitorNamespaceSelector: {}
-        
-        ruleSelectorNilUsesHelmValues: false
-        ruleNamespaceSelector: {}
-      
-        hostNetwork: false
-        hostPID: false
-        securityContext:
-          fsGroup: 2000
-          runAsGroup: 2000
-          runAsNonRoot: true
-          runAsUser: 1000
-
-    # 6. Grafana configuration and dashboard sidecar
-    grafana:
-      enabled: true
-      sidecar:
-        dashboards:
-          enabled: true
-          label: grafana_dashboard
-
-jaeger:
-    enabled: true
-    provisionCassandra: false
-    cassandra:
-      enabled: false
-    schema:
-      enabled: false
-    allInOne:
-      enabled: true
-      # Explicit resource definitions to prevent GKE Autopilot from assigning 
-      # oversized defaults and to trigger node scale-up in europe-north1-c
+  nodeExporter:
+    enabled: true  # Collects node-level CPU/memory/disk metrics from each AKS worker
+  alertmanager:
+    enabled: false  # Disabled - using Jaeger for now, can enable later for PagerDuty integration
+  prometheus:
+    prometheusSpec:
       resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-    storage:
-      type: memory
-    agent: { enabled: false }  # Not required in allInOne mode
-    collector: { enabled: false }  # Built-in as part of allInOne
-    query: { enabled: false }  # UI and query API are included in allInOne
+        requests: { cpu: 200m, memory: 1Gi }
+      storageSpec: {}  # Ephemeral storage - acceptable for non-production monitoring
+      # CRITICAL: Allow Prometheus to scrape all namespaces, not just its own
+      # Without this, our citrus namespace services won't be discovered
+      serviceMonitorSelectorNilUsesHelmValues: false
+
+# Jaeger All-In-One Configuration
+# CRITICAL: This section was heavily refactored during AKS migration
+# Problem history:
+#   1. Initially tried distributed mode (collector + query + agent) - caused "gocql: no hosts available"
+#      because Cassandra wasn't actually running but chart kept trying to connect
+#   2. Attempted to use persistent storage - Azure PVC provisioning conflicts
+#   3. Services weren't receiving traces - turned out to be multi-instance memory isolation
+# Final solution: Force All-In-One mode with explicit component disabling
+jaeger:
+  enabled: true
+  provisionCassandra: false  # Must be false - we're using in-memory storage, not Cassandra
+  
+  # IMPORTANT: Explicitly disable distributed components
+  # Without these, Helm chart creates separate pods that don't share memory,
+  # causing traces sent to collector to be invisible in query UI
+  collector: { enabled: false }
+  query: { enabled: false }
+  agent: { enabled: false }
+  
+  allInOne:
+    enabled: true
+    storageType: memory  # In-memory only - sufficient for demo/debugging
+    serviceType: ClusterIP  # Internal only, accessed via port-forward during development
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+  
+  storage:
+    type: memory

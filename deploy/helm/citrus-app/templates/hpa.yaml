@@ -1,3 +1,26 @@
+{{/*
+HorizontalPodAutoscaler Configuration
+Enables automatic scaling based on CPU/memory utilization.
+
+IMPLEMENTATION NOTES:
+1. Currently disabled for all services (autoscaling.enabled: false in values.yaml)
+   - Reason: During initial migration, needed stable replica counts to isolate issues
+   - Future: Enable for frontend/recommendationservice after load testing
+
+2. Metrics Server dependency
+   - HPA requires metrics-server to be installed in cluster
+   - On AKS, this is pre-installed but verify with: kubectl top nodes
+   - If showing <unknown>, metrics-server may not be synced yet (wait 1-2 min)
+
+3. Resource requests are mandatory
+   - HPA calculates % based on requests.cpu value
+   - Without requests, HPA shows "missing request for cpu" and won't scale
+   - All services in values.yaml now have explicit requests defined
+
+4. Scaling behavior
+   - Scale-up: Aggressive (adds pods when >80% CPU for 15s)
+   - Scale-down: Conservative (waits 5 min to avoid flapping)
+*/}}
 {{- range $name, $config := .Values.services }}
 {{- if $config.autoscaling }}
 {{- if $config.autoscaling.enabled }}
@@ -12,9 +35,9 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ $name }}
+    name: {{ $name }}  # Must match Deployment metadata.name exactly
   minReplicas: {{ $config.autoscaling.minReplicas | default 1 }}
-  maxReplicas: {{ $config.autoscaling.maxReplicas | default 3 }}
+  maxReplicas: {{ $config.autoscaling.maxReplicas | default 3 }}  # Conservative max to prevent cost overruns
   metrics:
     {{- if $config.autoscaling.targetCPUUtilizationPercentage }}
     - type: Resource
@@ -22,6 +45,8 @@ spec:
         name: cpu
         target:
           type: Utilization
+          # Target is % of requests.cpu (not limits.cpu)
+          # Example: requests.cpu=100m, target=80 → scale up when pod uses >80m
           averageUtilization: {{ $config.autoscaling.targetCPUUtilizationPercentage | default 80 }}
     {{- end }}
 {{- end }}

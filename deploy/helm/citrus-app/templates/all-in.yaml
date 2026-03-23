@@ -24,70 +24,85 @@ spec:
         - name: PORT
           value: {{ $config.service.targetPort | quote }}
 
-        # 1. Inject service endpoints dynamically from values.yaml (DRY principle)
+        # Set platform to 'local' to prevent image from searching for GCP metadata
+        # Without this, pods crash on Azure with "metadata server not found" errors
+        - name: ENV_PLATFORM
+          value: "local"
+
+        # Inject service endpoints dynamically from values.yaml
+        # Replaces hardcoded IPs which break when pods restart
         {{- range $envName, $envValue := $.Values.config.serviceEndpoints }}
         - name: {{ $envName }}
           value: {{ $envValue | quote }}
         {{- end }}
 
+        # DISABLE_PROFILER is required for paymentservice and currencyservice
+        # Reason: Google Cloud Profiler library crashes on non-GCP environments
+        # Symptom: CrashLoopBackOff with "profiler: failed to initialize"
         - name: DISABLE_PROFILER
           value: "1"
 
-        # 2. Advanced OpenTelemetry Tracing Logic
+        # OpenTelemetry Tracing Configuration
+        # TROUBLESHOOTING HISTORY:
+        # 1. Initially set OTEL_EXPORTER_OTLP_ENDPOINT to http://citrus-jaeger:4318 (http/protobuf)
+        #    - Traces not appearing in Jaeger UI
+        #    - Root cause: path auto-duplication (/v1/traces/v1/traces)
+        # 2. Switched to gRPC protocol with jaeger-grpc-solid:4317
+        #    - Still no traces from frontend
+        #    - Discovered via source code inspection: frontend ignores OTEL_* variables
+        # 3. Final fix: Added ENABLE_TRACING + COLLECTOR_SERVICE_ADDR for frontend
+        #    - Frontend is legacy code that predates OTEL standardization
         {{- if $.Values.tracing.enabled }}
         - name: OTEL_SERVICE_NAME
           value: {{ $name | quote }}
+        {{- if eq $name "frontend" }}
+        # CRITICAL: Frontend requires non-standard env vars (hardcoded in main.go)
+        # Standard OTEL_EXPORTER_OTLP_ENDPOINT is ignored by this image version
+        # Without these two variables, initTracing() is never called
+        - name: ENABLE_TRACING
+          value: "1"
+        - name: COLLECTOR_SERVICE_ADDR
+          value: "jaeger-grpc-solid:4317"
+        {{- end }}
+        # Standard OTEL configuration for other services
+        # Using gRPC instead of HTTP to avoid path-duplication bugs
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: {{ $.Values.tracing.endpoint | quote }}
+          value: "jaeger-grpc-solid:4317"
         - name: OTEL_EXPORTER_OTLP_PROTOCOL
-          value: {{ $.Values.tracing.protocol | quote }}
+          value: "grpc"
         - name: OTEL_TRACES_SAMPLER
           value: {{ $.Values.tracing.sampler | quote }}
-        # Mandatory for modern SDKs to talk to non-TLS internal Jaeger
+        - name: OTEL_TRACES_EXPORTER
+          value: "otlp"
+        # TLS disabled because jaeger-grpc-solid is internal ClusterIP without certs
         - name: OTEL_EXPORTER_OTLP_INSECURE
           value: "true"
-        # Mandatory for older Google demo images to activate OTLP
-        - name: COLLECTOR_OTLP_ENABLED
-          value: "true"
+        - name: OTEL_LOG_LEVEL
+          value: "debug"  # Temporary - useful for verifying trace export during development
         {{- else }}
         - name: DISABLE_TRACING
           value: "1"
         {{- end }}
 
-        # 3. Service-specific environment variables
-        {{- if eq $name "shoppingassistantservice" }}
-        - name: PROJECT_ID
-          value: "gen-lang-client-0189893462"
-        - name: REGION
-          value: "europe-north1"
-        - name: ALLOYDB_CLUSTER_NAME
-          value: "dummy-cluster"
-        - name: ALLOYDB_INSTANCE_NAME
-          value: "dummy-instance"
-        - name: ALLOYDB_DATABASE_NAME
-          value: "dummy-db"
-        - name: ALLOYDB_TABLE_NAME
-          value: "dummy-table"
-        - name: ALLOYDB_SECRET_NAME
-          value: "dummy-secret"
-        {{- end }}
-
+        # Loadgenerator-specific configuration
+        # Initially missing FRONTEND_ADDR, causing "No module named 'frontend'" errors
+        # This env var tells Locust where to send test traffic
         {{- if eq $name "loadgenerator" }}
         - name: FRONTEND_ADDR
           value: "frontend:80"
         - name: USERS
-          value: "10"
+          value: "10"  # Concurrent virtual users for load testing
         {{- end }}
         
         ports:
         - containerPort: {{$config.service.targetPort}}
+        # Resource limits are enforced by K8s scheduler
+        # requests: minimum guaranteed (used for pod placement decisions)
+        # limits: maximum allowed (pod gets OOMKilled if exceeded)
+        # NOTE: AI services initially had 128Mi limit - caused OOMKilled
+        # Increased to 512Mi after analyzing crash logs
         resources:
-          requests:
-            cpu: {{ $config.resources.requests.cpu }}
-            memory: {{ $config.resources.requests.memory }}
-          limits:
-            cpu: {{ $config.resources.limits.cpu }}
-            memory: {{ $config.resources.limits.memory }}
+          {{- toYaml $config.resources | nindent 10 }}
 ---
 apiVersion: v1
 kind: Service
@@ -95,14 +110,15 @@ metadata:
   name: {{ $name }} 
   labels:
     {{- include "citrus-app.labels" $ | nindent 4 }}
-    app: {{ $name }}
 spec:
   selector:
-    app: {{ $name }}
+    app: {{ $name }}  # Must match deployment template labels for traffic routing
   ports:
     - name: http
       protocol: TCP
-      port: {{ $config.service.port }}      
-      targetPort: {{ $config.service.targetPort }}                                  
+      port: {{ $config.service.port }}        # External-facing port (what clients connect to)
+      targetPort: {{ $config.service.targetPort }}  # Container port (must match containerPort)
+  # Service type defaults to ClusterIP (internal-only)
+  # Override with LoadBalancer in values.yaml for external access (e.g., frontend)
   type: {{ $config.service.type | default "ClusterIP" }}
 {{- end }}

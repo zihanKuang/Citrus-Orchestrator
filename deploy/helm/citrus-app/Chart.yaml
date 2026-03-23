@@ -1,15 +1,31 @@
 apiVersion: v2
 name: citrus-app
 description: A high-performance cloud-native orchestration for the Citrus microservices stack.
+
+# Project Context:
+# This Helm chart was built to migrate Google's microservices-demo from GKE to Azure AKS.
+# Key challenges solved:
+#   - RBAC permission conflicts between GitLab CI and GKE
+#   - Service discovery issues (replaced hardcoded IPs with K8s DNS)
+#   - Observability stack integration (Prometheus + Jaeger)
+#   - Cross-cloud compatibility (GCP-specific APIs disabled)
+
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
 
 dependencies:
+  # Prometheus Stack: Full observability suite (metrics, dashboards, alerting)
+  # Version 61.x chosen for compatibility with AKS 1.28+ and Helm 3.12+
+  # Note: Had to disable validating webhooks during install due to x509 cert issues on AKS
   - name: kube-prometheus-stack
     version: "61.x.x"
     repository: "https://prometheus-community.github.io/helm-charts"
     condition: prometheus.enabled
+  
+  # Jaeger: Distributed tracing for microservices
+  # Version 3.x supports both All-In-One and distributed deployments
+  # IMPORTANT: Use All-In-One mode only - distributed mode has memory isolation bugs
   - name: jaeger
     version: "3.x.x"
     repository: "https://jaegertracing.github.io/helm-charts"

@@ -1,3 +1,21 @@
+{{/*
+ServiceMonitor Configuration for Prometheus Operator
+This CRD tells Prometheus which services to scrape for metrics.
+
+CRITICAL TROUBLESHOOTING NOTES:
+1. Initial deployment showed 0/0 targets in Prometheus UI
+   - Root cause: Label mismatch between selector and Service labels
+   - Fix: Aligned matchLabels with actual Service metadata (app: servicename)
+
+2. Some services showed "Down" status with binary garbage in response
+   - Root cause: gRPC services (adservice, etc.) don't expose HTTP /metrics endpoint
+   - Accepted limitation: Only HTTP services will report metrics
+   - Alternative: Use kube-state-metrics for pod-level health signals
+
+3. Cross-namespace discovery failed initially
+   - Required setting serviceMonitorSelectorNilUsesHelmValues: false in values.yaml
+   - Without this, Prometheus only scraped its own namespace
+*/}}
 {{- range $name, $config := .Values.services }}
 ---
 apiVersion: monitoring.coreos.com/v1
@@ -5,12 +23,12 @@ kind: ServiceMonitor
 metadata:
     name: {{ $name }}-monitor
     labels:
-        release: monitoring-stack
+        release: monitoring-stack  # Required for Prometheus Operator discovery
 spec:
     selector:
         matchLabels:
-            app: {{$name}}
+            app: {{ $name }}  # MUST match Service metadata.labels.app
     endpoints:
-    - port: http
-      interval: 15s
+    - port: http  # References Service port name, NOT number
+      interval: 15s  # Scrape frequency - balance between data granularity and load
 {{- end }}
