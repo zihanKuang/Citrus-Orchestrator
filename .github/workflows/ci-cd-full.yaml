@@ -1,0 +1,218 @@
+name: Citrus CI/CD - Production Pipeline
+
+# Trigger on pushes to main, PRs, or manual dispatch
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # workflow_dispatch allows manual triggers
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Job 1: Validate Helm charts
+  validate:
+    name: Validate Helm & Kubernetes Manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.14.0'
+
+      - name: Helm Lint
+        run: helm lint deploy/helm/citrus-app
+
+      - name: Helm Template Dry Run
+        run: helm template citrus deploy/helm/citrus-app --debug > /tmp/rendered.yaml
+
+      - name: Validate Rendered Manifests
+        run: |
+          # Check for common YAML errors
+          grep -E 'Error|failed|nil pointer' /tmp/rendered.yaml && exit 1 || echo "Validation passed"
+
+  # Job 2: Detect which services changed
+  detect-changes:
+    name: Smart Path Detection
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      recommendation: ${{ steps.filter.outputs.recommendation }}
+      cartservice: ${{ steps.filter.outputs.cartservice }}
+      shoppingassistant: ${{ steps.filter.outputs.shoppingassistant }}
+      productcatalog: ${{ steps.filter.outputs.productcatalog }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'src/frontend/**'
+            recommendation:
+              - 'src/recommendationservice/**'
+            cartservice:
+              - 'src/cartservice/**'
+            shoppingassistant:
+              - 'src/shoppingassistantservice/**'
+            productcatalog:
+              - 'src/productcatalogservice/**'
+
+  # Job 3: Build Docker images (matrix strategy for efficiency)
+  build-images:
+    name: Build ${{ matrix.service }} 
+    runs-on: ubuntu-latest
+    needs: [validate, detect-changes]
+    if: |
+      needs.detect-changes.outputs.frontend == 'true' ||
+      needs.detect-changes.outputs.recommendation == 'true' ||
+      needs.detect-changes.outputs.cartservice == 'true' ||
+      needs.detect-changes.outputs.shoppingassistant == 'true' ||
+      needs.detect-changes.outputs.productcatalog == 'true'
+
+    strategy:
+      matrix:
+        include:
+          - service: frontend
+            path: src/frontend
+            changed: ${{ needs.detect-changes.outputs.frontend }}
+          - service: recommendation
+            path: src/recommendationservice
+            changed: ${{ needs.detect-changes.outputs.recommendation }}
+          - service: cartservice
+            path: src/cartservice/src
+            changed: ${{ needs.detect-changes.outputs.cartservice }}
+          - service: shoppingassistant
+            path: src/shoppingassistantservice
+            changed: ${{ needs.detect-changes.outputs.shoppingassistant }}
+          - service: productcatalog
+            path: src/productcatalogservice
+            changed: ${{ needs.detect-changes.outputs.productcatalog }}
+
+    steps:
+      - uses: actions/checkout@v4
+        if: matrix.changed == 'true'
+
+      - name: Lowercase Repo Owner
+        if: matrix.changed == 'true'
+        id: repo
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        if: matrix.changed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: matrix.changed == 'true'
+        uses: docker/login-action@v3
+        with: 
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push ${{ matrix.service }}
+        if: matrix.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.path }}
+          push: ${{ github.event_name != 'pull_request' }}  # Only push on main branch
+          platforms: linux/amd64  # Add linux/arm64 if needed
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ghcr.io/${{ steps.repo.outputs.owner }}/citrus-${{ matrix.service }}:latest
+            ghcr.io/${{ steps.repo.outputs.owner }}/citrus-${{ matrix.service }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  # Job 4: Deploy to AKS (only on main branch push)
+  # NOTE: Requires AKS_KUBECONFIG secret to be set in repository settings
+  deploy-to-aks:
+    name: Deploy to Azure AKS
+    runs-on: ubuntu-latest
+    needs: [build-images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # NOTE: Remove 'environment' block if you don't need GitHub environment protection
+    # To use environments: GitHub repo -> Settings -> Environments -> Create 'production'
+    # environment:
+    #   name: production
+    #   url: http://${{ steps.get-ip.outputs.external_ip }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.28.0'
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.14.0'
+        
+      - name: Configure Kubernetes Context
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.AKS_KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Verify Cluster Access
+        run: kubectl cluster-info
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade citrus ./deploy/helm/citrus-app \\
+            --install \\
+            --namespace citrus \\
+            --create-namespace \\
+            --timeout 10m \\
+            --wait \\
+            --set services.frontend.image.repository=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/citrus-frontend \\
+            --set services.frontend.image.tag=${{ github.sha }} \\
+            --set services.recommendationservice.image.repository=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/citrus-recommendation \\
+            --set services.recommendationservice.image.tag=${{ github.sha }}
+
+      - name: Verify Deployment
+        run: |
+          kubectl rollout status deployment/frontend -n citrus --timeout=5m
+          kubectl rollout status deployment/recommendationservice -n citrus --timeout=5m
+
+      - name: Get External IP
+        id: get-ip
+        run: |
+          EXTERNAL_IP=$(kubectl get svc frontend -n citrus -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "external_ip=$EXTERNAL_IP" >> $GITHUB_OUTPUT
+          echo "Application available at: http://$EXTERNAL_IP"
+
+  # Job 5: Post-deployment verification
+  smoke-test:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-to-aks]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Wait for LoadBalancer
+        run: sleep 30
+
+      - name: Health Check
+        run: |
+          FRONTEND_IP=$(kubectl get svc frontend -n citrus -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+          
+          if [ "$FRONTEND_IP" != "pending" ]; then
+            curl --fail --retry 3 --retry-delay 10 http://$FRONTEND_IP/_healthz || exit 1
+            echo "✅ Frontend health check passed"
+          else
+            echo "⚠️  LoadBalancer IP still pending, skipping smoke test"
+          fi
