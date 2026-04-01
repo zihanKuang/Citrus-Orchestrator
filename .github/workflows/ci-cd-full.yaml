@@ -1,9 +1,11 @@
 name: Citrus CI/CD - Production Pipeline
 
-# Trigger on pushes to main, PRs, or manual dispatch
+# Trigger on pushes to main, PRs, tags, or manual dispatch
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'  # 🔥 新增：监听所有 v 开头的 tags (v1.0, v2.0, etc.)
   pull_request:
     branches: [ main ]
   # workflow_dispatch allows manual triggers
@@ -131,9 +133,11 @@ jobs:
           tags: |
             ghcr.io/${{ steps.repo.outputs.owner }}/citrus-${{ matrix.service }}:latest
             ghcr.io/${{ steps.repo.outputs.owner }}/citrus-${{ matrix.service }}:${{ github.sha }}
+            ${{ startsWith(github.ref, 'refs/tags/') && format('ghcr.io/{0}/citrus-{1}:{2}', steps.repo.outputs.owner, matrix.service, github.ref_name) || '' }}
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+            ${{ startsWith(github.ref, 'refs/tags/') && format('org.opencontainers.image.version={0}', github.ref_name) || '' }}
 
   # Job 4: Deploy to AKS (only on main branch push)
   # NOTE: Requires AKS_KUBECONFIG secret to be set in repository settings
