@@ -1,0 +1,19 @@
+{
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "HighLatency",
+        "job": "recommendationservice",
+        "severity": "warning",
+        "namespace": "citrus"
+      },
+      "annotations": {
+        "description": "The P99 latency for recommendationservice has exceeded 500ms for the last 5 minutes",
+        "summary": "High latency detected on recommendation service"
+      },
+      "startsAt": "2026-04-01T07:30:00Z",
+      "generatorURL": "http://prometheus:9090/graph"
+    }
+  ]
+}

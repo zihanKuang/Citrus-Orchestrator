@@ -338,7 +338,7 @@ Examples:
     parser.add_argument('--canary', required=True, help='Canary docker image')
     parser.add_argument('--namespace', default='citrus', help='Kubernetes namespace')
     parser.add_argument('--prometheus', default='http://localhost:9090', help='Prometheus URL')
-    parser.add_argument('--canary-percent', type=int, default=20, help='Initial canary traffic %')
+    parser.add_argument('--canary-percent', type=int, default=20, help='Initial canary traffic percent')
     parser.add_argument('--duration', type=int, default=180, help='Monitoring duration (seconds)')
     
     args = parser.parse_args()

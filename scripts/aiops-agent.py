@@ -25,16 +25,16 @@ try:
     # Look for .env in project root (parent directory of scripts/)
     env_path = Path(__file__).parent.parent / '.env'
     load_dotenv(dotenv_path=env_path)
-    print(f"✅ Loaded .env from {env_path}")
+    print(f"[OK] Loaded .env from {env_path}")
 except ImportError:
-    print("⚠️  python-dotenv not installed. Run: pip install -r requirements.txt")
+    print("[WARNING] python-dotenv not installed. Run: pip install -r requirements.txt")
 
 try:
     import google.generativeai as genai
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
-    print("⚠️  Warning: google-generativeai not installed. Run: pip install -r requirements.txt")
+    print("[WARNING] google-generativeai not installed. Run: pip install -r requirements.txt")
 
 
 class KubernetesAnalyzer:
@@ -125,10 +125,10 @@ class AIOpsAgent:
             api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
             if api_key:
                 genai.configure(api_key=api_key)
-                self.model = genai.GenerativeModel('gemini-pro')
-                print("✅ Google Gemini AI initialized")
+                self.model = genai.GenerativeModel('gemini-2.5-flash')
+                print("[OK] Google Gemini AI initialized")
             else:
-                print("⚠️  GOOGLE_API_KEY or GEMINI_API_KEY not set, using rule-based analysis")
+                print("[WARNING] GOOGLE_API_KEY or GEMINI_API_KEY not set, using rule-based analysis")
     
     def analyze_alert(self, alert_data: Dict) -> Dict:
         """
@@ -151,7 +151,7 @@ class AIOpsAgent:
         severity = alert.get('labels', {}).get('severity', 'warning')
         
         print(f"\n{'='*60}")
-        print(f"🚨 Alert Received: {alert_name}")
+        print(f"[ALERT] Alert Received: {alert_name}")
         print(f"   Service: {service}")
         print(f"   Severity: {severity}")
         print(f"{'='*60}\n")
@@ -176,7 +176,7 @@ class AIOpsAgent:
     
     def _gather_context(self, service: str) -> Dict:
         """Gather operational context about the affected service"""
-        print("📊 Gathering context...")
+        print("[INFO] Gathering context...")
         
         # Get pod status
         pod_status = self.k8s.get_pod_status(f'app={service}')
@@ -193,12 +193,12 @@ class AIOpsAgent:
             'recent_events': events
         }
         
-        print("✅ Context gathered\n")
+        print("[OK] Context gathered\n")
         return context
     
     def _ai_analyze(self, alert: Dict, context: Dict) -> str:
         """Use Google Gemini to analyze alert and context"""
-        print("🤖 Consulting Google Gemini AI for analysis...")
+        print("[AI] Consulting Google Gemini AI for analysis...")
         
         prompt = self._build_analysis_prompt(alert, context)
         
@@ -206,7 +206,7 @@ class AIOpsAgent:
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
-            print(f"⚠️  AI analysis failed: {e}")
+            print(f"[WARNING] AI analysis failed: {e}")
             print("   Falling back to rule-based analysis\n")
             return self._fallback_analyze(alert, context)
     
@@ -324,7 +324,7 @@ def alertmanager_webhook():
     
     # Print to console (in production, send to Slack/PagerDuty)
     print("\n" + "="*60)
-    print("📝 INCIDENT REPORT")
+    print("[REPORT] INCIDENT REPORT")
     print("="*60)
     print(result['analysis'])
     print("="*60 + "\n")
@@ -377,7 +377,7 @@ Configure Alertmanager to send webhooks:
     agent = AIOpsAgent(namespace=args.namespace)
     
     if args.mode == 'server':
-        print(f"\n🚀 AIOps Agent listening on port {args.port}")
+        print(f"\n[SERVER] AIOps Agent listening on port {args.port}")
         print(f"Webhook URL: http://localhost:{args.port}/webhook\n")
         app.run(host='0.0.0.0', port=args.port, debug=False)
     
