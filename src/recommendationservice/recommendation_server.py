@@ -97,7 +97,7 @@ class RecommendationService(demo_pb2_grpc.RecommendationServiceServicer):
 
 if __name__ == "__main__":
     logger.info("initializing recommendationservice")
-    logger.info("Model Version: v1.0 - Baseline")
+    logger.info("Model Version: v2.0 - Improved algorithm with better performance")
 
     try:
       if "DISABLE_PROFILER" in os.environ:
