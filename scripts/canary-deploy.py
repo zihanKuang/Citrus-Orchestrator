@@ -93,7 +93,7 @@ class KubernetesClient:
     def scale_deployment(self, deployment: str, replicas: int):
         """Scale deployment to specified replica count"""
         self._kubectl('scale', f'deployment/{deployment}', f'--replicas={replicas}')
-        print(f"✅ Scaled {deployment} to {replicas} replicas")
+        print(f"[OK] Scaled {deployment} to {replicas} replicas")
     
     def set_image(self, deployment: str, container: str, image: str):
         """Update container image"""
@@ -102,7 +102,7 @@ class KubernetesClient:
             f'deployment/{deployment}',
             f'{container}={image}'
         )
-        print(f"✅ Updated {deployment} image to {image}")
+        print(f"[OK] Updated {deployment} image to {image}")
     
     def rollout_status(self, deployment: str, timeout: int = 300):
         """Wait for rollout to complete"""
@@ -160,7 +160,7 @@ class CanaryDeployment:
             monitoring_duration: Monitoring period in seconds (default 180s = 3min)
         """
         print(f"\n{'='*60}")
-        print(f"🚀 Starting Canary Deployment: {self.service_name}")
+        print(f"[CANARY] Starting Canary Deployment: {self.service_name}")
         print(f"{'='*60}\n")
         
         try:
@@ -168,7 +168,7 @@ class CanaryDeployment:
             self._deploy_canary(canary_percent)
             
             # Step 2: Monitor metrics
-            print(f"\n⏱️  Monitoring for {monitoring_duration}s...")
+            print(f"\n[MONITOR] Monitoring for {monitoring_duration}s...")
             time.sleep(monitoring_duration)
             
             # Step 3: Evaluate performance
@@ -181,14 +181,14 @@ class CanaryDeployment:
                 self._rollback()
                 
         except Exception as e:
-            print(f"\n❌ Deployment failed: {e}")
-            print("🔄 Initiating emergency rollback...")
+            print(f"\n[ERROR] Deployment failed: {e}")
+            print("[ROLLBACK] Initiating emergency rollback...")
             self._rollback()
             sys.exit(1)
     
     def _deploy_canary(self, canary_percent: int):
         """Deploy canary version alongside baseline"""
-        print("📦 Deploying canary version...")
+        print("[DEPLOY] Deploying canary version...")
         
         # Get current replica count
         current_replicas = self.k8s.get_deployment_replicas(self.service_name)
@@ -219,7 +219,7 @@ class CanaryDeployment:
         if not self.k8s.rollout_status(self.service_name):
             raise Exception("Canary deployment failed to become ready")
         
-        print("✅ Canary deployed successfully\n")
+        print("[OK] Canary deployed successfully\n")
     
     def _evaluate_canary(self) -> str:
         """
@@ -229,7 +229,7 @@ class CanaryDeployment:
             "proceed" if canary performs well enough
             "rollback" if canary underperforms
         """
-        print("\n📊 Evaluating canary performance...\n")
+        print("\n[EVAL] Evaluating canary performance...\n")
         
         # Query error rates
         baseline_errors = self._get_error_rate(self.baseline_deployment)
@@ -240,11 +240,11 @@ class CanaryDeployment:
         canary_latency = self._get_p99_latency(self.canary_deployment)
         
         # Display metrics
-        print(f"📈 Error Rate:")
+        print(f"[METRICS] Error Rate:")
         print(f"   Baseline: {baseline_errors:.4f}%")
         print(f"   Canary:   {canary_errors:.4f}%")
         
-        print(f"\n⏱️  P99 Latency:")
+        print(f"\n[METRICS] P99 Latency:")
         print(f"   Baseline: {baseline_latency:.0f}ms")
         print(f"   Canary:   {canary_latency:.0f}ms")
         
@@ -252,19 +252,19 @@ class CanaryDeployment:
         error_ratio = canary_errors / max(baseline_errors, 0.0001)  # Avoid division by zero
         latency_ratio = canary_latency / max(baseline_latency, 1)
         
-        print(f"\n🧮 Performance Ratios:")
+        print(f"\n[DECISION] Performance Ratios:")
         print(f"   Error ratio: {error_ratio:.2f}x (threshold: {self.error_rate_threshold}x)")
         print(f"   Latency ratio: {latency_ratio:.2f}x (threshold: {self.latency_threshold}x)")
         
         # Make decision
         if error_ratio > self.error_rate_threshold:
-            print(f"\n❌ DECISION: ROLLBACK (error rate too high)")
+            print(f"\n[ROLLBACK] DECISION: ROLLBACK (error rate too high)")
             return "rollback"
         elif latency_ratio > self.latency_threshold:
-            print(f"\n❌ DECISION: ROLLBACK (latency too high)")
+            print(f"\n[ROLLBACK] DECISION: ROLLBACK (latency too high)")
             return "rollback"
         else:
-            print(f"\n✅ DECISION: PROCEED (canary performing well)")
+            print(f"\n[PROCEED] DECISION: PROCEED (canary performing well)")
             return "proceed"
     
     def _get_error_rate(self, deployment: str) -> float:
@@ -290,8 +290,8 @@ class CanaryDeployment:
     
     def _complete_rollout(self):
         """Gradually increase canary traffic to 100%"""
-        print("\n🎉 Canary validation successful!")
-        print("📈 Proceeding with gradual rollout...")
+        print("\n[SUCCESS] Canary validation successful!")
+        print("[ROLLOUT] Proceeding with gradual rollout...")
         
         stages = [50, 75, 100]
         for percent in stages:
@@ -299,17 +299,17 @@ class CanaryDeployment:
             # In production, adjust traffic weights here
             time.sleep(30)  # Wait 30s between stages
         
-        print("\n✅ Rollout complete! New version is now serving 100% traffic.")
+        print("\n[COMPLETE] Rollout complete! New version is now serving 100% traffic.")
     
     def _rollback(self):
         """Revert to baseline version"""
-        print("\n🔄 Rolling back to baseline version...")
+        print("\n[ROLLBACK] Rolling back to baseline version...")
         
         self.k8s.set_image(self.service_name, 'main', self.baseline_image)
         self.k8s.rollout_status(self.service_name)
         
-        print("✅ Rollback complete. Service restored to baseline version.")
-        print("📝 Incident logged for post-mortem analysis.")
+        print("[OK] Rollback complete. Service restored to baseline version.")
+        print("[LOG] Incident logged for post-mortem analysis.")
 
 
 def main():

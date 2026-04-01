@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-04-01 11:25:11",
+  "service": "recommendationservice",
+  "baseline": {
+    "error_rate": "0.1%",
+    "p99_latency": "150ms"
+  },
+  "canary": {
+    "error_rate": "0.08%",
+    "p99_latency": "135ms"
+  },
+  "decision": {
+    "error_ratio": "0.80x",
+    "latency_ratio": "0.90x",
+    "result": "PROCEED"
+  }
+}
