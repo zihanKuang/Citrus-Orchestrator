@@ -60,11 +60,11 @@ Traffic to frontend LoadBalancer results in 503 Service Unavailable.
 **Investigation:**
 ```bash
 $ kubectl describe service frontend -n citrus
-Selector:  app.kubernetes.io/name=frontend  # ❌ Wrong
+Selector:  app.kubernetes.io/name=frontend  # Wrong
 
 $ kubectl get pods -n citrus -l app=frontend
 NAME                        READY   STATUS    RESTARTS   AGE
-frontend-xxx                1/1     Running   0          5m  # ✅ Pod exists
+frontend-xxx                1/1     Running   0          5m  # Pod exists
 ```
 
 **Root Cause:**
@@ -188,7 +188,7 @@ main.go:114:  if os.Getenv("ENABLE_TRACING") == "1" {
 main.go:178:  mustMapEnv(&svc.collectorAddr, "COLLECTOR_SERVICE_ADDR")
 ```
 
-💡 **Eureka moment:** Frontend ignores standard `OTEL_*` env vars!
+**Discovery:** Frontend ignores standard `OTEL_*` env vars
 
 **Root Cause:**
 Google's demo frontend predates OpenTelemetry standardization and uses custom environment variables:
@@ -209,7 +209,7 @@ Added frontend-specific env vars in `all-in.yaml`:
 **Validation:**
 ```bash
 $ curl http://localhost:16686/api/services
-{"data":["jaeger-all-in-one","frontend"]}  # ✅ Success!
+{"data":["jaeger-all-in-one","frontend"]}  # Success
 ```
 
 **Lesson Learned:**
