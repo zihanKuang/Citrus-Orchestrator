@@ -38,11 +38,17 @@ jobs:
       - name: Helm Template Dry Run
         run: helm template citrus deploy/helm/citrus-app --debug > /tmp/rendered.yaml
 
+      - name: Install kubeconform
+        run: |
+          curl -sSLO https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+
       - name: Validate Rendered Manifests
         run: |
-          # Validate YAML manifests by parsing them with kubectl client-side dry-run.
-          # This avoids false positives from plain-text words like "failed" in alert descriptions.
-          kubectl apply --dry-run=client -f /tmp/rendered.yaml >/dev/null
+          # Validate YAML manifests using kubeconform (offline static validation).
+          # Ignore missing schemas for CRDs (PrometheusRule, ServiceMonitor, etc.)
+          kubeconform -summary -output text -ignore-missing-schemas /tmp/rendered.yaml
           echo "Manifest validation passed"
 
   # Job 2: Detect which services changed
