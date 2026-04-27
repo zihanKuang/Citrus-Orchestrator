@@ -6,8 +6,10 @@ Production automation scripts for canary deployments and AI-powered incident ana
 
 - `canary-deploy.py` - Automated canary deployment with intelligent rollback (465 lines)
 - `canary-demo.py` - Simplified demo version (145 lines)
+- `canary-wrapper.sh` - Bash wrapper with mock support for testing (250 lines)
 - `aiops-agent.py` - AI-powered incident analysis (398 lines)
 - `requirements.txt` - Python dependencies
+- `tests/` - BATS test suite for canary wrapper validation
 
 ---
 
@@ -66,6 +68,59 @@ Automatic rollback triggered when:
 |--------|-------------|
 | Error Rate | `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))` |
 | P99 Latency | `histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))` |
+
+---
+
+## Bash Wrapper (Testing & CI/CD)
+
+Resilient automation wrapper with mocked metric threshold evaluation for testing without live infrastructure.
+
+### Why a Bash Wrapper?
+
+- **CI/CD Integration**: Test deployment logic in GitHub Actions without Kubernetes
+- **Local Development**: Validate threshold calculations before production deployment
+- **Safety**: Pre-flight checks catch configuration errors early
+
+### Usage
+
+```bash
+# Real deployment (calls Python script)
+./canary-wrapper.sh \
+  --service recommendationservice \
+  --baseline ghcr.io/user/app:v1.0 \
+  --canary ghcr.io/user/app:v1.1
+
+# Mock mode (for testing threshold logic)
+MOCK_MODE=1 \
+MOCK_ERROR_RATIO=1.5 \
+MOCK_LATENCY_RATIO=0.9 \
+./canary-wrapper.sh \
+  --service test \
+  --baseline v1 \
+  --canary v2
+```
+
+### BATS Tests
+
+Automated test suite validates all threshold scenarios:
+
+```bash
+# Install BATS
+npm install -g bats
+
+# Run tests
+bats scripts/tests/canary-wrapper.bats
+
+# Expected output:
+# ✓ PROCEED decision when metrics are healthy
+# ✓ ROLLBACK decision when error ratio exceeds threshold
+# ✓ ROLLBACK decision when latency ratio exceeds threshold
+# ✓ boundary test: error ratio exactly at threshold
+# 
+# 15 tests, 0 failures
+```
+
+See `tests/README.md` for full test documentation.
 
 ---
 

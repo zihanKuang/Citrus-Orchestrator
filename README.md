@@ -37,6 +37,7 @@ Observability & Monitoring:
 MLOps & Automation:
 - Automated canary deployment script (465 lines Python)
 - Intelligent rollback based on error rate and latency thresholds
+- Bash wrapper with BATS test suite for mocked threshold validation
 - AI-powered incident analysis using Google Gemini (398 lines Python)
 - Integration with Prometheus Alertmanager for automated response
 
