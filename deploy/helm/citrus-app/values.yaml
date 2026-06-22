@@ -16,7 +16,6 @@ config:
     AD_SERVICE_ADDR: "adservice:9555"
     PAYMENT_SERVICE_ADDR: "paymentservice:50051"
     EMAIL_SERVICE_ADDR: "emailservice:8080"
-    SHOPPING_ASSISTANT_SERVICE_ADDR: "shoppingassistantservice:8080"
 
 # OpenTelemetry Tracing Configuration
 # Migration note: Moved from GKE to Azure AKS Standard, had to rework this section entirely

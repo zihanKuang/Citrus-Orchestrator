@@ -74,21 +74,7 @@ This Helm chart orchestrates a cloud-native microservices application originally
 
 **Fix:** Updated `values.yaml` to use port 7070 with inline comment explaining the discrepancy.
 
-### Issue 2: OOMKilled on AI Service
-
-**Symptom:** `shoppingassistantservice` pod restarting every 30 seconds
-
-**Investigation:**
-```bash
-kubectl describe pod shoppingassistantservice-xxx
-# Events: OOMKilled (exit code 137)
-```
-
-**Root Cause:** Python AI libraries (transformers, etc.) require >256Mi memory
-
-**Fix:** Increased limits to 512Mi in `values.yaml`
-
-### Issue 3: CrashLoopBackOff on Payment Service
+### Issue 2: CrashLoopBackOff on Payment Service
 
 **Symptom:** `paymentservice` failing with "profiler: failed to initialize"
 
@@ -96,7 +82,7 @@ kubectl describe pod shoppingassistantservice-xxx
 
 **Fix:** Injected `DISABLE_PROFILER: "1"` for all services in `all-in.yaml`
 
-### Issue 4: Prometheus Can't Discover Services
+### Issue 3: Prometheus Can't Discover Services
 
 **Symptom:** Prometheus Targets page showing 0/0 discovered
 
@@ -108,7 +94,7 @@ kubectl describe pod shoppingassistantservice-xxx
 - Set `serviceMonitorSelectorNilUsesHelmValues: false` in `values.yaml`
 - Added explicit label injection in Service template
 
-### Issue 5: Helm Template Parse Errors
+### Issue 4: Helm Template Parse Errors
 
 **Symptom:** `helm template` failing with "unexpected EOF"
 

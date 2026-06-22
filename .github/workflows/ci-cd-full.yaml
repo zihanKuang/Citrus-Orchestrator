@@ -59,7 +59,6 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       recommendation: ${{ steps.filter.outputs.recommendation }}
       cartservice: ${{ steps.filter.outputs.cartservice }}
-      shoppingassistant: ${{ steps.filter.outputs.shoppingassistant }}
       productcatalog: ${{ steps.filter.outputs.productcatalog }}
     
     steps:
@@ -75,8 +74,6 @@ jobs:
               - 'src/recommendationservice/**'
             cartservice:
               - 'src/cartservice/**'
-            shoppingassistant:
-              - 'src/shoppingassistantservice/**'
             productcatalog:
               - 'src/productcatalogservice/**'
 
@@ -89,7 +86,6 @@ jobs:
       needs.detect-changes.outputs.frontend == 'true' ||
       needs.detect-changes.outputs.recommendation == 'true' ||
       needs.detect-changes.outputs.cartservice == 'true' ||
-      needs.detect-changes.outputs.shoppingassistant == 'true' ||
       needs.detect-changes.outputs.productcatalog == 'true'
 
     strategy:
@@ -104,9 +100,6 @@ jobs:
           - service: cartservice
             path: src/cartservice/src
             changed: ${{ needs.detect-changes.outputs.cartservice }}
-          - service: shoppingassistant
-            path: src/shoppingassistantservice
-            changed: ${{ needs.detect-changes.outputs.shoppingassistant }}
           - service: productcatalog
             path: src/productcatalogservice
             changed: ${{ needs.detect-changes.outputs.productcatalog }}

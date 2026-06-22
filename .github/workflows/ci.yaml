@@ -41,7 +41,6 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       cartservice: ${{ steps.filter.outputs.cartservice }}
       recommendation: ${{ steps.filter.outputs.recommendation }}
-      shoppingassistant: ${{ steps.filter.outputs.shoppingassistant }}
       productcatalog: ${{ steps.filter.outputs.productcatalog }}
     
     steps:
@@ -58,8 +57,6 @@ jobs:
               - 'src/cartservice/**'
             recommendation:
               - 'src/recommendationservice/**'
-            shoppingassistant:
-              - 'src/shoppingassistantservice/**'
             productcatalog:
               - 'src/productcatalogservice/**'
 

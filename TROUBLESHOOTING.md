@@ -308,55 +308,7 @@ $ kubectl port-forward svc/citrus-prometheus 9090:9090 -n citrus
 
 ---
 
-## Resource Management
-
-### 8. OOMKilled: shoppingassistantservice
-
-**Symptom:**
-```bash
-$ kubectl get pods -n citrus | grep shopping
-shoppingassistantservice-xxx  0/1  OOMKilled  5  2m
-
-$ kubectl describe pod shoppingassistantservice-xxx
-Reason: OOMKilled
-Exit Code: 137
-```
-
-**Investigation:**
-```bash
-# Check memory limits
-$ kubectl get deployment shoppingassistantservice -o yaml | grep memory
-  limits:
-    memory: 128Mi
-  requests:
-    memory: 64Mi
-```
-
-Python AI service loads ML models at startup - far exceeds 128Mi.
-
-**Solution:**
-```yaml
-# values.yaml
-services:
-  shoppingassistantservice:
-    resources:
-      limits: { cpu: 200m, memory: 512Mi }  # Increased from 128Mi
-      requests: { cpu: 100m, memory: 256Mi }
-```
-
-**How to Determine Correct Limits:**
-```bash
-# Monitor actual usage
-$ kubectl top pod shoppingassistantservice-xxx -n citrus
-NAME                            CPU    MEMORY
-shoppingassistantservice-xxx    45m    387Mi  # Peak usage
-
-# Set limits to 120-150% of peak
-```
-
----
-
-### 9. HPA Shows \<unknown\> / 50%
+### 8. HPA Shows \<unknown\> / 50%
 
 **Symptom:**
 ```bash

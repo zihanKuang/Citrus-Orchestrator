@@ -8,7 +8,7 @@ Production-grade microservices platform with automated MLOps and AI-powered oper
 
 **Project Highlights:**
 
-- 11-service microservices platform deployed on Azure AKS with under 10 minute deployment time
+- 10-service microservices platform deployed on Azure AKS with under 10 minute deployment time
 - Automated canary deployment with intelligent rollback based on real-time SLO metrics
 - AI-powered incident analysis using Google Gemini
 - 80% Docker image size reduction through multi-stage builds
@@ -43,7 +43,7 @@ MLOps & Automation:
 
 **Base Application:**
 
-The 11 microservices (frontend, cart, checkout, payment, etc.) are from [Google's microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo), used under Apache License 2.0. This project focuses on the operational layer: deployment automation, observability, and AI-driven operations rather than application development.
+The 10 microservices (frontend, cart, checkout, payment, etc.) are from [Google's microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo), used under Apache License 2.0. This project focuses on the operational layer: deployment automation, observability, and AI-driven operations rather than application development.
 
 ---
 
@@ -154,7 +154,7 @@ Citrus-Orchestrator/
 │   ├── canary-deploy.py       # MLOps automation
 │   ├── aiops-agent.py         # AI incident analysis
 │   └── requirements.txt
-├── src/                       # 11 microservices
+├── src/                       # 10 microservices
 │   ├── frontend/Dockerfile    # Optimized multi-stage
 │   ├── recommendationservice/Dockerfile
 │   └── ... (9 more services)
@@ -245,7 +245,7 @@ HTTP/protobuf mode caused path duplication bug where SDK appended `/v1/traces` t
 
 **Manual Environment Variable Injection**
 
-Google's original container images expect GCP-specific variables (`PROJECT_ID`, `REGION`). Code uses `os.environ[]` which raises KeyError if variables missing, rather than `.get()` with defaults. Helm templates inject placeholder values to prevent crashes. Alternative would require forking and patching all 11 services.
+Google's original container images expect GCP-specific variables (`PROJECT_ID`, `REGION`). Code uses `os.environ[]` which raises KeyError if variables missing, rather than `.get()` with defaults. Helm templates inject placeholder values to prevent crashes. Alternative would require forking and patching all 10 services.
 
 ---
 
@@ -329,7 +329,7 @@ Critical decisions documented inline:
 
 ## Performance
 
-**Current Resource Usage (11 services + observability):**
+**Current Resource Usage (10 services + observability):**
 - Total CPU requests: 1200m (1.2 cores)
 - Total memory requests: 2Gi
 - Monthly cost: ~$150 USD (Azure AKS 2-node Standard_D2s_v3)
@@ -345,7 +345,7 @@ Critical decisions documented inline:
 
 **Microservices Application Code:**
 
-The 11 microservices (frontend, cart, checkout, payment, shipping, email, currency, product catalog, recommendation, ad service, load generator) are from [Google Cloud Platform's microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo), licensed under Apache License 2.0.
+The 10 microservices (frontend, cart, checkout, payment, shipping, email, currency, product catalog, recommendation, ad service, load generator) are from [Google Cloud Platform's microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo), licensed under Apache License 2.0.
 
 **My Contributions (DevOps & Infrastructure):**
 
