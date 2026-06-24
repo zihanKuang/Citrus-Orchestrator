@@ -16,6 +16,7 @@ config:
     AD_SERVICE_ADDR: "adservice:9555"
     PAYMENT_SERVICE_ADDR: "paymentservice:50051"
     EMAIL_SERVICE_ADDR: "emailservice:8080"
+    SHOPPING_ASSISTANT_SERVICE_ADDR: "localhost:8080"  # Placeholder - service removed but frontend requires env var
 
 # OpenTelemetry Tracing Configuration
 # Migration note: Moved from GKE to Azure AKS Standard, had to rework this section entirely
@@ -48,7 +49,7 @@ services:
     resources:
       limits: { cpu: 200m, memory: 256Mi }
       requests: { cpu: 100m, memory: 128Mi }
-    service: { port: 80, targetPort: 8080, type: LoadBalancer }  # LoadBalancer required for external access on AKS
+    service: { port: 80, targetPort: 8080, type: ClusterIP }  # ClusterIP for local kind, access via port-forward
 
   adservice:
     replicaCount: 1
