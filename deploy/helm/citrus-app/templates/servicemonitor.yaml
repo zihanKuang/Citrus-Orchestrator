@@ -23,7 +23,7 @@ kind: ServiceMonitor
 metadata:
     name: {{ $name }}-monitor
     labels:
-        release: monitoring-stack  # Required for Prometheus Operator discovery
+        release: citrus  # Must match Prometheus release label for discovery
 spec:
     selector:
         matchLabels:
