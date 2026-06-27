@@ -109,6 +109,7 @@ kind: Service
 metadata:
   name: {{ $name }} 
   labels:
+    app: {{ $name }}  # Required for Prometheus ServiceMonitor discovery
     {{- include "citrus-app.labels" $ | nindent 4 }}
 spec:
   selector:
