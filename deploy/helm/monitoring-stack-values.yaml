@@ -1,0 +1,58 @@
+# Monitoring Stack Configuration
+# This is the infrastructure layer - independent of applications
+# Purpose: Provide centralized observability for all applications in the cluster
+
+# Prometheus Operator Configuration
+prometheusOperator:
+  # Disable admission webhooks to avoid x509 certificate issues on Kind/AKS
+  # Trade-off: Less validation but more reliable deployment
+  admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false  # Don't create cert-manager job
+  tls:
+    enabled: false  # Don't mount TLS secrets
+
+# Alertmanager Configuration
+alertmanager:
+  enabled: false  # Disabled for now - enable when adding alerting workflow
+
+# Grafana Configuration
+grafana:
+  enabled: true
+  adminPassword: prom-operator  # Default password for demo
+  persistence:
+    enabled: false  # Ephemeral storage for local development
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Prometheus Configuration
+prometheus:
+  enabled: true
+  prometheusSpec:
+    # CRITICAL: Allow Prometheus to discover ServiceMonitors in all namespaces
+    # Without this, application metrics won't be scraped
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}  # Empty = watch all namespaces
+    
+    # Resource limits
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    
+    # Storage
+    storageSpec: {}  # Ephemeral storage - acceptable for non-production
+    
+    # Retention
+    retention: 7d  # Keep metrics for 7 days
