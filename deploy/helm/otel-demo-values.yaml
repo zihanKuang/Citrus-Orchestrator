@@ -1,0 +1,226 @@
+# OpenTelemetry Demo Configuration
+# Purpose: Deploy demo application, integrate with existing monitoring infrastructure
+
+# ========================================
+# DISABLE BUILT-IN MONITORING STACK
+# We already have Prometheus + Grafana + Jaeger deployed separately
+# ========================================
+
+# Disable built-in Jaeger (we use our own)
+jaeger:
+  enabled: false
+
+# Disable built-in Prometheus (we use our own)
+prometheus:
+  enabled: false
+
+# Disable built-in Grafana (we use our own)
+grafana:
+  enabled: false
+
+# ========================================
+# OPENTELEMETRY COLLECTOR CONFIGURATION
+# Configure OTel Collector to send data to our existing infrastructure
+# ========================================
+
+opentelemetry-collector:
+  enabled: true
+  
+  config:
+    # Receivers: How services send data to the collector
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    
+    # Processors: Transform data before exporting
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+      
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 400
+    
+    # Exporters: Where to send the data
+    exporters:
+      # Send traces to our Jaeger
+      otlp/jaeger:
+        endpoint: jaeger:4317
+        tls:
+          insecure: true
+      
+      # Send metrics to our Prometheus
+      # Prometheus has OTLP receiver on port 9090
+      otlphttp/prometheus:
+        endpoint: http://monitoring-kube-prometheus-prometheus:9090/api/v1/otlp
+        tls:
+          insecure: true
+      
+      # Debug exporter for troubleshooting
+      debug:
+        verbosity: basic
+    
+    # Service: Define pipelines
+    service:
+      pipelines:
+        # Traces pipeline
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/jaeger, debug]
+        
+        # Metrics pipeline
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlphttp/prometheus, debug]
+        
+        # Logs pipeline (optional, can disable if not needed)
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+
+# ========================================
+# DEMO SERVICES CONFIGURATION
+# ========================================
+
+# Global defaults for all services
+default:
+  env:
+    # Point services to OTel Collector
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://otel-demo-otelcol:4318
+    
+    # Service name will be set automatically by Helm
+    - name: OTEL_SERVICE_NAME
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: "metadata.labels['app.kubernetes.io/component']"
+  
+  # Resource limits for all services (prevent OOM)
+  resources:
+    limits:
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# ========================================
+# FRONTEND PROXY CONFIGURATION
+# The main entry point for the demo
+# ========================================
+
+components:
+  frontendProxy:
+    enabled: true
+    service:
+      type: ClusterIP
+    env:
+      # Point frontend to our Jaeger UI
+      - name: JAEGER_HOST
+        value: jaeger
+      - name: JAEGER_UI_PORT
+        value: "16686"
+      
+      # Point to our Grafana
+      - name: GRAFANA_HOST
+        value: monitoring-grafana
+      - name: GRAFANA_PORT
+        value: "80"
+  
+  # Enable all demo services
+  accounting:
+    enabled: true
+  
+  ad:
+    enabled: true
+  
+  cart:
+    enabled: true
+  
+  checkout:
+    enabled: true
+  
+  currency:
+    enabled: true
+  
+  email:
+    enabled: true
+  
+  frontend:
+    enabled: true
+  
+  loadgenerator:
+    enabled: true
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+  
+  payment:
+    enabled: true
+  
+  productCatalog:
+    enabled: true
+  
+  quote:
+    enabled: true
+  
+  recommendation:
+    enabled: true
+  
+  shipping:
+    enabled: true
+  
+  # Optional: Disable some services if you want to reduce resource usage
+  # fraudDetection:
+  #   enabled: false
+  
+  # imageProvider:
+  #   enabled: true
+
+# ========================================
+# DEPENDENCIES
+# Keep these enabled as they're needed by the demo
+# ========================================
+
+# Kafka (for async messaging)
+kafka:
+  enabled: true
+  resources:
+    limits:
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+# Valkey/Redis (for cart storage)
+valkey:
+  enabled: true
+  master:
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+# PostgreSQL (for some services)
+postgresql:
+  enabled: true
+  primary:
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
