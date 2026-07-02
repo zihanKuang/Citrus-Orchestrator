@@ -79,30 +79,69 @@ Cloud: Azure AKS, Multi-Cloud Architecture, Cost Optimization
 ### Prerequisites
 
 ```bash
+# Required
 kubectl 1.28+
 helm 3.12+
-Azure CLI (for AKS)
+Kubernetes cluster (Kind, Minikube, or cloud provider)
+
+# Optional
+PowerShell (for Windows deployment scripts)
 Python 3.12+ (for MLOps scripts)
 ```
 
-### Deployment
+### Deployment (Infrastructure as Code)
+
+**Option 1: One-Click Deployment** (Recommended)
+
+```powershell
+# Deploy entire platform (infrastructure + application)
+.\scripts\deploy-all.ps1
+```
+
+**Option 2: Step-by-Step Deployment**
+
+```powershell
+# Step 1: Deploy infrastructure layer (Prometheus + Grafana + Jaeger)
+.\scripts\deploy-infrastructure.ps1
+
+# Step 2: Deploy application layer (OpenTelemetry Demo)
+.\scripts\deploy-application.ps1
+```
+
+**Option 3: Manual Helm Commands**
 
 ```bash
 # Clone repository
 git clone https://github.com/zihanKuang/Citrus-Orchestrator.git
 cd Citrus-Orchestrator
 
-# Deploy to AKS
-helm install citrus ./deploy/helm/citrus-app \
-  --namespace citrus \
-  --create-namespace
+# Add Helm repositories
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+helm repo update
 
-# Wait for pods (2-3 minutes)
-kubectl wait --for=condition=ready pod --all -n citrus --timeout=300s
+# Create namespace
+kubectl create namespace citrus
 
-# Get frontend IP
-kubectl get svc frontend -n citrus -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# Deploy monitoring stack
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  -n citrus \
+  --values deploy/helm/monitoring-stack-values.yaml
+
+# Deploy Jaeger
+helm install jaeger jaegertracing/jaeger \
+  -n citrus \
+  --values deploy/helm/jaeger-values.yaml
+
+# Deploy OpenTelemetry Demo
+helm install otel-demo open-telemetry/opentelemetry-demo \
+  --version 0.40.9 \
+  -n citrus \
+  --values deploy/helm/otel-demo-values.yaml
 ```
+
+For detailed deployment instructions, see [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### Advanced Workflows
 
