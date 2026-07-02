@@ -1,196 +1,263 @@
-# MLOps & AIOps Scripts
+# Scripts Directory
 
-Production automation scripts for canary deployments and AI-powered incident analysis.
+Automation scripts for deployment, MLOps, and AIOps operations.
 
-## Contents
+## Directory Structure
 
-- `canary-deploy.py` - Automated canary deployment with intelligent rollback (465 lines)
-- `canary-demo.py` - Simplified demo version (145 lines)
-- `canary-wrapper.sh` - Bash wrapper with mock support for testing (250 lines)
-- `aiops-agent.py` - AI-powered incident analysis (398 lines)
-- `requirements.txt` - Python dependencies
-- `tests/` - BATS test suite for canary wrapper validation
-
----
-
-## Canary Deployment
-
-Automates ML model upgrades with safety mechanisms:
-
-1. Deploy new version alongside existing (20% traffic)
-2. Monitor metrics for 3 minutes (error rate, latency)
-3. Auto-rollback if performance degrades
-4. Gradual rollout if validation succeeds
-
-### Prerequisites
-
-```bash
-# Port-forward to Prometheus
-kubectl port-forward -n citrus svc/citrus-kube-prometheus-sta-prometheus 9090:9090
-
-# Verify kubectl access
-kubectl cluster-info
-
-# Install dependencies
-pip install -r requirements.txt
+```
+scripts/
+├── deployment/                    # Infrastructure as Code deployment scripts
+│   ├── 0-deploy-all.ps1          # One-click full deployment
+│   ├── 1-deploy-infrastructure.ps1  # Deploy monitoring + tracing
+│   ├── 2-deploy-application.ps1  # Deploy OpenTelemetry Demo
+│   └── README.md                  # Deployment guide
+│
+├── canary-deploy.py               # Automated canary deployment
+├── canary-demo.py                 # Canary deployment demo
+├── canary-wrapper.sh              # Bash wrapper with mock support
+├── aiops-agent.py                 # AI-powered incident analysis
+├── requirements.txt               # Python dependencies
+└── tests/                         # BATS test suite
 ```
 
-### Usage
+## Quick Start
+
+### Deployment (Infrastructure as Code)
+
+```powershell
+# One-click deployment
+.\scripts\deployment\0-deploy-all.ps1
+```
+
+See [deployment/README.md](deployment/README.md) for details.
+
+### MLOps: Canary Deployment
 
 ```bash
-# Basic deployment
+# Install dependencies
+pip install -r requirements.txt
+
+# Run canary deployment
 python canary-deploy.py \
   --service recommendationservice \
-  --baseline ghcr.io/zihankuang/citrus-recommendation:v1.0 \
-  --canary ghcr.io/zihankuang/citrus-recommendation:v1.1
+  --baseline ghcr.io/user/app:v1.0 \
+  --canary ghcr.io/user/app:v1.1
+```
 
-# Custom monitoring duration
+### AIOps: Incident Analysis
+
+```bash
+# Start webhook server
+python aiops-agent.py --mode server --port 5000
+
+# Analyze single alert
+python aiops-agent.py --mode analyze --alert-file alert.json
+```
+
+## Script Categories
+
+### 1. Deployment Scripts (New)
+
+**Purpose:** Infrastructure as Code deployment automation
+
+**Files:**
+- `deployment/0-deploy-all.ps1` - Full stack deployment
+- `deployment/1-deploy-infrastructure.ps1` - Monitoring + tracing
+- `deployment/2-deploy-application.ps1` - Application deployment
+
+**Key Features:**
+- Version controlled deployment logic
+- Reproducible deployments
+- No manual Helm commands needed
+- Cross-platform (PowerShell Core)
+
+**Documentation:** [deployment/README.md](deployment/README.md)
+
+### 2. MLOps Scripts
+
+**Purpose:** Automated ML model deployment with safety mechanisms
+
+**Files:**
+- `canary-deploy.py` (465 lines) - Production canary deployment
+- `canary-demo.py` (145 lines) - Demo with simulated metrics
+- `canary-wrapper.sh` (250 lines) - Bash wrapper with testing support
+
+**Key Features:**
+- Automated metrics monitoring
+- Intelligent rollback decisions
+- Configurable thresholds
+- Mock mode for testing
+
+**Decision Logic:**
+- Error rate > 1.2x baseline → Rollback
+- P99 latency > 1.5x baseline → Rollback
+- Health checks failing → Rollback
+
+**Example:**
+
+```bash
 python canary-deploy.py \
   --service recommendationservice \
   --baseline ghcr.io/zihankuang/citrus-recommendation:v1.0 \
   --canary ghcr.io/zihankuang/citrus-recommendation:v1.1 \
   --duration 300
-
-# Demo mode (simulated metrics)
-python canary-demo.py
 ```
 
-### Decision Thresholds
+### 3. AIOps Scripts
 
-Automatic rollback triggered when:
-- Error rate > 1.2x baseline (20% increase)
-- P99 latency > 1.5x baseline (50% increase)
-- Deployment fails health checks
+**Purpose:** AI-powered incident analysis and response
 
-### Metrics Queried
+**Files:**
+- `aiops-agent.py` (398 lines) - Incident analysis agent
 
-| Metric | PromQL Query |
-|--------|-------------|
-| Error Rate | `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))` |
-| P99 Latency | `histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))` |
+**Key Features:**
+- Webhook server for Alertmanager
+- Root cause analysis
+- Remediation suggestions
+- Prevention recommendations
 
----
-
-## Bash Wrapper (Testing & CI/CD)
-
-Resilient automation wrapper with mocked metric threshold evaluation for testing without live infrastructure.
-
-### Why a Bash Wrapper?
-
-- **CI/CD Integration**: Test deployment logic in GitHub Actions without Kubernetes
-- **Local Development**: Validate threshold calculations before production deployment
-- **Safety**: Pre-flight checks catch configuration errors early
-
-### Usage
-
-```bash
-# Real deployment (calls Python script)
-./canary-wrapper.sh \
-  --service recommendationservice \
-  --baseline ghcr.io/user/app:v1.0 \
-  --canary ghcr.io/user/app:v1.1
-
-# Mock mode (for testing threshold logic)
-MOCK_MODE=1 \
-MOCK_ERROR_RATIO=1.5 \
-MOCK_LATENCY_RATIO=0.9 \
-./canary-wrapper.sh \
-  --service test \
-  --baseline v1 \
-  --canary v2
-```
-
-### BATS Tests
-
-Automated test suite validates all threshold scenarios:
-
-```bash
-# Install BATS
-npm install -g bats
-
-# Run tests
-bats scripts/tests/canary-wrapper.bats
-
-# Expected output:
-# ✓ PROCEED decision when metrics are healthy
-# ✓ ROLLBACK decision when error ratio exceeds threshold
-# ✓ ROLLBACK decision when latency ratio exceeds threshold
-# ✓ boundary test: error ratio exactly at threshold
-# 
-# 15 tests, 0 failures
-```
-
-See `tests/README.md` for full test documentation.
-
----
-
-## AI Operations Agent
-
-Analyzes Prometheus alerts and generates incident reports with root cause analysis.
-
-### Prerequisites
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Set API key (if using AI mode)
-export GEMINI_API_KEY="your-key"
-```
-
-### Usage
-
-**Webhook server mode** (receives alerts from Alertmanager):
-
-```bash
-python aiops-agent.py --mode server --port 5000
-```
-
-**Single alert analysis**:
-
-```bash
-python aiops-agent.py --mode analyze --alert-file alert.json
-```
-
-### Alertmanager Configuration
+**Integration:**
 
 ```yaml
+# Alertmanager config
 receivers:
   - name: 'aiops-agent'
     webhook_configs:
       - url: 'http://localhost:5000/webhook'
-
-route:
-  receiver: 'aiops-agent'
-  group_by: ['alertname']
 ```
 
-### Analysis Capabilities
+## Prerequisites
 
-The agent gathers:
-- Pod status and resource usage
-- Recent logs (last 50 lines)
-- Kubernetes events
-- Related metrics from Prometheus
+### For Deployment Scripts
 
-Output includes:
-- Root cause assessment
-- Impact analysis
-- Remediation commands
-- Prevention recommendations
+- Kubernetes cluster
+- kubectl configured
+- Helm 3.12+
+- PowerShell 5.1+ or PowerShell Core
 
----
+### For MLOps/AIOps Scripts
+
+- Python 3.12+
+- kubectl access
+- Prometheus port-forward on 9090
+- Dependencies: `pip install -r requirements.txt`
+
+## Testing
+
+### Deployment Scripts
+
+```powershell
+# Dry-run mode
+kubectl apply --dry-run=client -f ...
+
+# Test in Kind cluster
+kind create cluster --name test
+.\scripts\deployment\0-deploy-all.ps1
+```
+
+### Canary Deployment
+
+```bash
+# Unit tests
+bats scripts/tests/canary-wrapper.bats
+
+# Mock mode
+MOCK_MODE=1 \
+MOCK_ERROR_RATIO=1.5 \
+./canary-wrapper.sh --service test --baseline v1 --canary v2
+```
+
+## Architecture Integration
+
+```
+┌────────────────────────────────────────┐
+│  Deployment Scripts (IaC)              │
+│  ├─ Deploy infrastructure              │
+│  ├─ Deploy application                 │
+│  └─ Version controlled                 │
+└────────────────────────────────────────┘
+              ↓
+┌────────────────────────────────────────┐
+│  Running Platform                      │
+│  ├─ Prometheus (metrics)               │
+│  ├─ Grafana (dashboards)               │
+│  ├─ Jaeger (traces)                    │
+│  └─ Application services               │
+└────────────────────────────────────────┘
+              ↓
+┌────────────────────────────────────────┐
+│  MLOps Scripts                         │
+│  ├─ Canary deployments                 │
+│  ├─ Automated rollback                 │
+│  └─ Metric-based decisions             │
+└────────────────────────────────────────┘
+              ↓
+┌────────────────────────────────────────┐
+│  AIOps Scripts                         │
+│  ├─ Alert analysis                     │
+│  ├─ Root cause detection               │
+│  └─ Remediation suggestions            │
+└────────────────────────────────────────┘
+```
+
+## Best Practices
+
+1. **Use Deployment Scripts:** Don't run manual Helm commands
+2. **Version Control:** All scripts are in Git
+3. **Test First:** Use mock mode before production
+4. **Monitor Deployments:** Watch metrics during canary
+5. **Document Changes:** Update READMEs when modifying scripts
 
 ## Troubleshooting
 
-**Problem:** `kubectl: command not found`
+### Deployment Scripts
 
-Solution: Ensure kubectl is in PATH and configured
+See [deployment/README.md](deployment/README.md#troubleshooting)
 
-**Problem:** `Prometheus query failed: Connection refused`
+### Canary Deployment
 
-Solution: Verify port-forward is running on port 9090
+**Prometheus Connection Failed:**
 
-**Problem:** `ImportError: No module named 'flask'`
+```bash
+# Verify port-forward
+kubectl port-forward -n citrus svc/monitoring-kube-prometheus-prometheus 9090:9090
+```
 
-Solution: `pip install -r requirements.txt`
+**Kubectl Errors:**
+
+```bash
+# Verify cluster access
+kubectl cluster-info
+kubectl get nodes
+```
+
+### AIOps Agent
+
+**Import Errors:**
+
+```bash
+pip install -r requirements.txt
+```
+
+**Alertmanager Webhook Not Working:**
+
+```bash
+# Check agent is running
+curl http://localhost:5000/health
+```
+
+## Related Documentation
+
+- [Main Deployment Guide](../docs/DEPLOYMENT.md)
+- [Deployment Scripts Guide](deployment/README.md)
+- [TROUBLESHOOTING.md](../TROUBLESHOOTING.md)
+
+## Contributing
+
+When adding new scripts:
+
+1. **Document Purpose:** Add clear comments
+2. **Update README:** Explain usage
+3. **Add Tests:** Create test cases if applicable
+4. **Follow Style:** Match existing scripts
+5. **English Only:** All comments and messages in English
