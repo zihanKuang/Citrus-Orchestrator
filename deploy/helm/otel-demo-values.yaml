@@ -87,38 +87,16 @@ opentelemetry-collector:
           exporters: [debug]
 
 # ========================================
-# DEMO SERVICES CONFIGURATION
-# ========================================
-
-# Global defaults for all services
-default:
-  env:
-    # Point services to OTel Collector
-    - name: OTEL_EXPORTER_OTLP_ENDPOINT
-      value: http://otel-demo-otelcol:4318
-    
-    # Service name will be set automatically by Helm
-    - name: OTEL_SERVICE_NAME
-      valueFrom:
-        fieldRef:
-          apiVersion: v1
-          fieldPath: "metadata.labels['app.kubernetes.io/component']"
-  
-  # Resource limits for all services (prevent OOM)
-  resources:
-    limits:
-      memory: 256Mi
-    requests:
-      cpu: 50m
-      memory: 128Mi
-
-# ========================================
-# FRONTEND PROXY CONFIGURATION
-# The main entry point for the demo
+# ALL SERVICES ARE DEFINED UNDER 'components'
 # ========================================
 
 components:
-  frontendProxy:
+  # ========================================
+  # FRONTEND PROXY CONFIGURATION
+  # The main entry point for the demo
+  # ========================================
+  
+  frontend-proxy:
     enabled: true
     service:
       type: ClusterIP
@@ -135,92 +113,61 @@ components:
       - name: GRAFANA_PORT
         value: "80"
   
-  # Enable all demo services
-  accounting:
+  # ========================================
+  # DEMO SERVICES
+  # Enable all core services by default
+  # ========================================
+  
+  # Optional services (disabled by default to save resources)
+  fraud-detection:
+    enabled: false
+  
+  image-provider:
+    enabled: false
+  
+  product-reviews:
+    enabled: false
+  
+  # ========================================
+  # FEATURE FLAGS SERVICE
+  # ========================================
+  
+  flagd:
     enabled: true
   
-  ad:
-    enabled: true
+  # ========================================
+  # DEPENDENCIES (also under 'components')
+  # ========================================
   
-  cart:
-    enabled: true
-  
-  checkout:
-    enabled: true
-  
-  currency:
-    enabled: true
-  
-  email:
-    enabled: true
-  
-  frontend:
-    enabled: true
-  
-  loadgenerator:
+  # Kafka (for async messaging)
+  # Default is 700Mi because Kafka runs JVM with 400MB heap
+  kafka:
     enabled: true
     resources:
       limits:
-        memory: 256Mi
+        memory: 700Mi
       requests:
         cpu: 100m
-        memory: 128Mi
+        memory: 400Mi
   
-  payment:
+  # Valkey/Redis (for cart storage)
+  # Default is 20Mi because it only stores demo cart data
+  valkey-cart:
     enabled: true
-  
-  productCatalog:
-    enabled: true
-  
-  quote:
-    enabled: true
-  
-  recommendation:
-    enabled: true
-  
-  shipping:
-    enabled: true
-  
-  # Optional: Disable some services if you want to reduce resource usage
-  # fraudDetection:
-  #   enabled: false
-  
-  # imageProvider:
-  #   enabled: true
-
-# ========================================
-# DEPENDENCIES
-# Keep these enabled as they're needed by the demo
-# ========================================
-
-# Kafka (for async messaging)
-kafka:
-  enabled: true
-  resources:
-    limits:
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 256Mi
-
-# Valkey/Redis (for cart storage)
-valkey:
-  enabled: true
-  master:
     resources:
       limits:
-        memory: 256Mi
+        memory: 20Mi
       requests:
         cpu: 50m
-        memory: 128Mi
-
-# PostgreSQL (for some services)
-postgresql:
-  enabled: true
-  primary:
+        memory: 10Mi
+  
+  # PostgreSQL (for some services)
+  # Default is 100Mi for lightweight demo database
+  postgresql:
+    enabled: true
     resources:
       limits:
-        memory: 256Mi
+        memory: 100Mi
       requests:
         cpu: 50m
-        memory: 128Mi
+        memory: 50Mi
