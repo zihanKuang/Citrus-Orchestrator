@@ -1,0 +1,15 @@
+# MCP Server Dependencies
+# Core MCP SDK
+mcp>=1.0.0
+
+# Kubernetes interaction
+kubernetes>=28.0.0
+
+# Prometheus queries
+requests>=2.31.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Optional: Async HTTP client for better performance
+aiohttp>=3.9.0
