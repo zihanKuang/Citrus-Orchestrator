@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""
+MCP Server for Kubernetes Operations
+
+Exposes Kubernetes inspection tools via Model Context Protocol (MCP).
+AI clients can discover and invoke these tools automatically.
+"""
+
+import asyncio
+import logging
+from typing import Any, Sequence
+
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+from mcp.types import Tool, TextContent
+
+from tools import KubernetesTools
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+server = Server("citrus-k8s-ops")
+k8s_tools = KubernetesTools(namespace="citrus")
+
+logger.info("MCP Server initialized: citrus-k8s-ops")
+
+
+@server.list_tools()
+async def list_tools() -> list[Tool]:
+    """Return list of available tools for AI client."""
+    logger.info("Client requested tool list")
+    
+    return [
+        Tool(
+            name="get_pod_logs",
+            description=(
+                "Retrieve recent logs from Kubernetes pods matching a label selector. "
+                "Useful for debugging errors, checking application output, or investigating incidents."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pod_selector": {
+                        "type": "string",
+                        "description": "Kubernetes label selector (e.g., 'app=frontend')"
+                    },
+                    "lines": {
+                        "type": "integer",
+                        "description": "Number of recent log lines to retrieve",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 1000
+                    }
+                },
+                "required": ["pod_selector"]
+            }
+        ),
+        
+        Tool(
+            name="get_pod_status",
+            description=(
+                "Get status information for pods matching a label selector. "
+                "Shows pod name, phase, restart count, and readiness status."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pod_selector": {
+                        "type": "string",
+                        "description": "Kubernetes label selector"
+                    }
+                },
+                "required": ["pod_selector"]
+            }
+        ),
+        
+        Tool(
+            name="get_recent_events",
+            description=(
+                "Get recent Kubernetes events from the namespace. "
+                "Shows timestamp, type, reason, and message."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "minutes": {
+                        "type": "integer",
+                        "description": "Time window in minutes",
+                        "default": 10,
+                        "minimum": 1
+                    }
+                },
+                "required": []
+            }
+        ),
+        
+        Tool(
+            name="query_prometheus",
+            description=(
+                "Execute a PromQL query against Prometheus. "
+                "Returns metric values for the given query."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "promql": {
+                        "type": "string",
+                        "description": "Prometheus Query Language expression"
+                    },
+                    "prometheus_url": {
+                        "type": "string",
+                        "description": "Prometheus server URL",
+                        "default": "http://localhost:9090"
+                    }
+                },
+                "required": ["promql"]
+            }
+        ),
+    ]
+
+
+@server.call_tool()
+async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
+    """
+    Route tool calls to appropriate methods.
+    
+    Args:
+        name: Tool name
+        arguments: Tool parameters
+        
+    Returns:
+        Tool output wrapped in TextContent
+    """
+    logger.info(f"Tool called: {name} with arguments: {arguments}")
+    
+    try:
+        if name == "get_pod_logs":
+            result = await k8s_tools.get_pod_logs(
+                pod_selector=arguments["pod_selector"],
+                lines=arguments.get("lines", 50)
+            )
+        
+        elif name == "get_pod_status":
+            result = await k8s_tools.get_pod_status(
+                pod_selector=arguments["pod_selector"]
+            )
+        
+        elif name == "get_recent_events":
+            result = await k8s_tools.get_recent_events(
+                minutes=arguments.get("minutes", 10)
+            )
+        
+        elif name == "query_prometheus":
+            result = await k8s_tools.query_prometheus(
+                promql=arguments["promql"],
+                prometheus_url=arguments.get("prometheus_url", "http://localhost:9090")
+            )
+        
+        else:
+            raise ValueError(f"Unknown tool: {name}")
+        
+        return [TextContent(type="text", text=result)]
+    
+    except Exception as e:
+        logger.error(f"Error executing {name}: {e}", exc_info=True)
+        error_message = f"Tool execution failed: {str(e)}"
+        return [TextContent(type="text", text=error_message)]
+
+
+async def main():
+    """Start the MCP server with stdio transport."""
+    logger.info("Starting MCP server on stdio...")
+    
+    async with stdio_server() as (read_stream, write_stream):
+        logger.info("Server ready. Waiting for client connection...")
+        
+        await server.run(
+            read_stream,
+            write_stream,
+            server.create_initialization_options()
+        )
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+    except Exception as e:
+        logger.error(f"Server crashed: {e}", exc_info=True)
+        raise
