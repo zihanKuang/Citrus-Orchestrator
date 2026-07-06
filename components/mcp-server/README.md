@@ -22,7 +22,19 @@ uv pip install -r requirements.txt
 
 ### Configure Claude Desktop
 
-Edit `%APPDATA%\Claude\claude_desktop_config.json`:
+**Method 1: Auto-create (Recommended)**
+
+1. Open Claude Desktop
+2. Go to **Settings** → **Developer** → **Edit Config**
+3. This will create and open `claude_desktop_config.json`
+4. Add the configuration below
+
+**Method 2: Manual**
+
+Create/edit file at:
+- Windows (standard install): `C:\Users\<YourName>\AppData\Roaming\Claude\claude_desktop_config.json`
+
+**Configuration:**
 
 ```json
 {
@@ -37,7 +49,10 @@ Edit `%APPDATA%\Claude\claude_desktop_config.json`:
 }
 ```
 
-Replace paths with your absolute paths.
+**Important:**
+- Use double backslashes `\\` for Windows paths
+- Use absolute paths (not relative)
+- Replace paths with your actual installation directory
 
 ### Restart Claude Desktop
 
