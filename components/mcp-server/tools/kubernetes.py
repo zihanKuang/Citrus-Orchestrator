@@ -42,9 +42,10 @@ class KubernetesTools:
             capture_output=True,
             text=True,
             encoding='utf-8',
+            errors='replace',
             check=True
         )
-        return result.stdout.strip()
+        return result.stdout.strip() if result.stdout else ""
     
     async def get_pod_logs(self, pod_selector: str, lines: int = 50) -> str:
         """
