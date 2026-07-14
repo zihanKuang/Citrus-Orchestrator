@@ -3,25 +3,85 @@ Kubernetes Operations Tools
 
 Wraps kubectl operations for MCP protocol.
 Each method corresponds to one MCP tool that AI can invoke.
+
+Deployment Modes:
+- Local Development: Uses kubectl with ~/.kube/config
+- In-Cluster: Uses Kubernetes Python client with ServiceAccount token
 """
 
 import subprocess
 import json
 import requests
+import os
 from typing import Dict, Any
 
 
 class KubernetesTools:
     """Provides Kubernetes cluster inspection capabilities via MCP protocol."""
     
-    def __init__(self, namespace: str = "citrus"):
+    def __init__(self, namespace: str = "citrus", use_kubectl: bool = None):
         """
         Initialize Kubernetes tools.
         
         Args:
             namespace: Default Kubernetes namespace to query
+            use_kubectl: If True, use kubectl CLI. If False, use K8s Python client.
+                        If None (default), auto-detect based on environment.
+        
+        Auto-detection logic:
+        - If in Kubernetes cluster: use Python client (checks for SA token)
+        - If local development: use kubectl CLI
         """
         self.namespace = namespace
+        
+        # Auto-detect deployment mode if not specified
+        if use_kubectl is None:
+            # Check if running inside Kubernetes cluster
+            # Kubernetes automatically mounts SA token at this path
+            self.use_kubectl = not os.path.exists(
+                '/var/run/secrets/kubernetes.io/serviceaccount/token'
+            )
+        else:
+            self.use_kubectl = use_kubectl
+        
+        # Initialize Kubernetes Python client if in-cluster
+        if not self.use_kubectl:
+            self._init_k8s_client()
+    
+    def _init_k8s_client(self):
+        """
+        Initialize Kubernetes Python client for in-cluster usage.
+        
+        This method configures the K8s client to use the ServiceAccount token
+        that Kubernetes automatically mounts into the Pod at:
+        /var/run/secrets/kubernetes.io/serviceaccount/
+        
+        Security Benefits:
+        - Uses ServiceAccount with RBAC restrictions (not admin access)
+        - Token auto-rotates (no static credentials)
+        - No need to mount sensitive kubeconfig files
+        """
+        try:
+            from kubernetes import client, config
+            
+            # Load in-cluster configuration
+            # This reads:
+            # - Token: /var/run/secrets/.../token
+            # - CA cert: /var/run/secrets/.../ca.crt
+            # - Namespace: /var/run/secrets/.../namespace
+            config.load_incluster_config()
+            
+            # Create API client for core resources (pods, events, etc.)
+            self.v1 = client.CoreV1Api()
+            
+            print(f"[OK] Kubernetes client initialized (in-cluster mode)")
+            print(f"    Using ServiceAccount token from /var/run/secrets/...")
+            print(f"    Permissions controlled by RBAC")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize K8s client: {e}")
+            print(f"        Falling back to kubectl CLI mode")
+            self.use_kubectl = True
     
     def _kubectl(self, *args) -> str:
         """
@@ -59,17 +119,57 @@ class KubernetesTools:
             Log output as string with pod name prefixes
         """
         try:
-            output = self._kubectl(
-                'logs',
-                '-l', pod_selector,
-                '--tail', str(lines),
-                '--prefix'
-            )
+            # Use kubectl CLI (local development)
+            if self.use_kubectl:
+                output = self._kubectl(
+                    'logs',
+                    '-l', pod_selector,
+                    '--tail', str(lines),
+                    '--prefix'
+                )
+                
+                if not output:
+                    return f"No logs found for pods matching '{pod_selector}'"
+                
+                return output
             
-            if not output:
-                return f"No logs found for pods matching '{pod_selector}'"
-            
-            return output
+            # Use Kubernetes Python client (in-cluster)
+            else:
+                # Parse label selector (e.g., "app=frontend" -> {"app": "frontend"})
+                label_dict = dict(item.split('=') for item in pod_selector.split(','))
+                label_selector_str = ','.join(f"{k}={v}" for k, v in label_dict.items())
+                
+                # List pods matching selector
+                pods = self.v1.list_namespaced_pod(
+                    namespace=self.namespace,
+                    label_selector=label_selector_str
+                )
+                
+                if not pods.items:
+                    return f"No pods found matching '{pod_selector}'"
+                
+                # Fetch logs from each pod
+                log_output = []
+                for pod in pods.items:
+                    pod_name = pod.metadata.name
+                    try:
+                        # Read pod logs (tail_lines parameter)
+                        logs = self.v1.read_namespaced_pod_log(
+                            name=pod_name,
+                            namespace=self.namespace,
+                            tail_lines=lines
+                        )
+                        
+                        # Format with pod name prefix (like kubectl --prefix)
+                        prefixed_logs = '\n'.join(
+                            f"[{pod_name}] {line}" for line in logs.split('\n')
+                        )
+                        log_output.append(prefixed_logs)
+                        
+                    except Exception as e:
+                        log_output.append(f"[{pod_name}] Error: {str(e)}")
+                
+                return '\n'.join(log_output)
             
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr if e.stderr else str(e)
@@ -88,22 +188,38 @@ class KubernetesTools:
             Human-readable pod status summary
         """
         try:
-            output = self._kubectl('get', 'pods', '-l', pod_selector, '-o', 'json')
-            data = json.loads(output)
+            # Use kubectl CLI (local development)
+            if self.use_kubectl:
+                output = self._kubectl('get', 'pods', '-l', pod_selector, '-o', 'json')
+                data = json.loads(output)
             
+            # Use Kubernetes Python client (in-cluster)
+            else:
+                label_dict = dict(item.split('=') for item in pod_selector.split(','))
+                label_selector_str = ','.join(f"{k}={v}" for k, v in label_dict.items())
+                
+                pods = self.v1.list_namespaced_pod(
+                    namespace=self.namespace,
+                    label_selector=label_selector_str
+                )
+                
+                # Convert K8s object to dict-like structure for consistent processing
+                data = {'items': [pod.to_dict() for pod in pods.items]}
+            
+            # Common processing for both modes
             pod_info_list = []
             for pod in data.get('items', []):
                 name = pod['metadata']['name']
                 phase = pod['status']['phase']
                 
                 restarts = sum(
-                    c['restartCount']
-                    for c in pod['status'].get('containerStatuses', [])
+                    c['restart_count']
+                    for c in pod['status'].get('container_statuses', [])
                 )
                 
                 ready = all(
                     c['ready']
-                    for c in pod['status'].get('containerStatuses', [])
+                    for c in pod['status'].get('container_statuses', [])
                 )
                 
                 info = f"Pod: {name}\n"
@@ -134,18 +250,47 @@ class KubernetesTools:
             Formatted event list
         """
         try:
-            output = self._kubectl(
-                'get',
-                'events',
-                '--sort-by=.lastTimestamp',
-                '-o', 'custom-columns=TIME:.lastTimestamp,TYPE:.type,REASON:.reason,MESSAGE:.message'
-            )
+            # Use kubectl CLI (local development)
+            if self.use_kubectl:
+                output = self._kubectl(
+                    'get',
+                    'events',
+                    '--sort-by=.lastTimestamp',
+                    '-o', 'custom-columns=TIME:.lastTimestamp,TYPE:.type,REASON:.reason,MESSAGE:.message'
+                )
+                
+                if not output:
+                    return "No recent events found"
+                
+                lines = output.split('\n')[-20:]
+                return '\n'.join(lines)
             
-            if not output:
-                return "No recent events found"
-            
-            lines = output.split('\n')[-20:]
-            return '\n'.join(lines)
+            # Use Kubernetes Python client (in-cluster)
+            else:
+                events = self.v1.list_namespaced_event(
+                    namespace=self.namespace
+                )
+                
+                if not events.items:
+                    return "No recent events found"
+                
+                # Sort by timestamp (most recent last)
+                sorted_events = sorted(
+                    events.items,
+                    key=lambda e: e.last_timestamp or e.event_time or '',
+                )
+                
+                # Format output (last 20 events)
+                event_lines = ["TIME\tTYPE\tREASON\tMESSAGE"]
+                for event in sorted_events[-20:]:
+                    time = event.last_timestamp or event.event_time or "N/A"
+                    evt_type = event.type or "N/A"
+                    reason = event.reason or "N/A"
+                    message = event.message or "N/A"
+                    
+                    event_lines.append(f"{time}\t{evt_type}\t{reason}\t{message}")
+                
+                return '\n'.join(event_lines)
             
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr if e.stderr else str(e)
