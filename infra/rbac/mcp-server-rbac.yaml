@@ -1,41 +1,18 @@
 # =============================================================================
 # RBAC Configuration for MCP Server
 # =============================================================================
-# Purpose: Implement least-privilege access control for AI-powered K8s agent
+# Least-privilege security model:
+# - Read-only permissions (get, list, watch)
+# - Namespace-scoped (citrus only)
+# - No destructive operations (delete, create, update)
 #
-# Security Principle: LEAST PRIVILEGE
-# - Grant ONLY the minimum permissions required for operation
-# - Block ALL destructive operations (delete, create, update)
-# - Allow ONLY read operations (get, list, watch)
-#
-# Why this matters for AI Agents:
-# - LLMs can hallucinate dangerous commands
-# - Even with perfect prompts, bugs can cause unintended operations
-# - RBAC is the PHYSICAL barrier that prevents accidents/attacks
-#
-# Three-Component Model:
-# 1. ServiceAccount (Identity): WHO is making the request?
-# 2. Role (Permissions):        WHAT operations are allowed?
-# 3. RoleBinding (Authorization): GRANT permissions to identity
+# Components:
+# 1. ServiceAccount: Pod identity (auto-injected JWT token)
+# 2. Role: Permission rules (what operations allowed)
+# 3. RoleBinding: Links ServiceAccount to Role
 # =============================================================================
 
----
-# =============================================================================
-# Component 1: ServiceAccount (Identity)
-# =============================================================================
-# Analogy: Employee badge/ID card
-# 
-# What it does:
-# - Gives the Pod a unique identity
-# - Kubernetes automatically injects a JWT token into the Pod at:
-#   /var/run/secrets/kubernetes.io/serviceaccount/token
-# - The Pod uses this token to authenticate API requests
-#
-# Without this:
-# - Pod would use the "default" ServiceAccount (often has too many permissions)
-# - Can't track which application made which API call
-# - Can't apply fine-grained RBAC
-# =============================================================================
+# ServiceAccount: Pod identity for Kubernetes API access
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -43,31 +20,12 @@ metadata:
   namespace: citrus
   labels:
     app: mcp-server
-    component: ai-agent
-  annotations:
-    description: "ServiceAccount for MCP Server with read-only K8s access"
-
-# When a Pod uses this ServiceAccount, Kubernetes:
-# 1. Generates a unique JWT token for this SA
-# 2. Mounts it at /var/run/secrets/kubernetes.io/serviceaccount/token
-# 3. The token expires and rotates automatically (security)
-# 4. API requests with this token are checked against RBAC rules below
 
 ---
-# =============================================================================
-# Component 2: Role (Permission Definition)
-# =============================================================================
-# Analogy: Job description / Access control list
-#
-# What it defines:
-# - Which API resources can be accessed (pods, events, logs, etc.)
-# - Which operations are allowed (get, list, watch, delete, etc.)
-# - Scope: This is a "Role" (namespace-scoped), not "ClusterRole" (cluster-wide)
-#
-# Design Decision: READ-ONLY
-# - verbs: ["get", "list", "watch"] ONLY
-# - Explicitly EXCLUDE: ["create", "update", "patch", "delete", "deletecollection"]
-# =============================================================================
+# Role: Permission definitions
+# - Namespace-scoped (citrus only)
+# - Read-only verbs: get, list, watch
+# - Explicitly excludes: create, update, patch, delete
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -75,137 +33,49 @@ metadata:
   namespace: citrus
   labels:
     app: mcp-server
-  annotations:
-    description: "Read-only permissions for MCP Server operations"
 rules:
-  # ---------------------------------------------------------------------------
-  # Rule 1: Pod Inspection (Core Requirement)
-  # ---------------------------------------------------------------------------
-  # Allows:
-  # - kubectl get pods
-  # - kubectl get pods <name>
-  # - kubectl get pods -l app=frontend
-  # - kubectl logs <pod-name>
-  # 
-  # Blocks:
-  # - kubectl delete pod <name>  ❌
-  # - kubectl exec -it <pod> sh  ❌
-  # - kubectl cp file <pod>:/    ❌
-  # ---------------------------------------------------------------------------
-  - apiGroups: [""]  # Core API group (pods, services, etc.)
-    resources:
-      - pods              # Access to pod metadata (status, labels, etc.)
-      - pods/log          # Access to pod logs (kubectl logs)
-    verbs:
-      - get               # Get single resource by name
-      - list              # List all resources (with label selectors)
-      - watch             # Stream updates (real-time monitoring)
-    # Notable EXCLUSIONS:
-    # - pods/exec: Would allow "kubectl exec" (shell access)
-    # - pods/attach: Would allow attaching to running containers
-    # - pods/portforward: Would allow port-forwarding
-
-  # ---------------------------------------------------------------------------
-  # Rule 2: Event Inspection (Troubleshooting)
-  # ---------------------------------------------------------------------------
-  # Allows:
-  # - kubectl get events
-  # - kubectl get events --sort-by=.lastTimestamp
-  #
-  # Use case: AI needs to see "Pod failed to start: ImagePullBackOff"
-  # ---------------------------------------------------------------------------
+  # Pod inspection: status, logs
+  # Allows: kubectl get/logs pods
+  # Blocks: kubectl exec/delete/port-forward
   - apiGroups: [""]
     resources:
-      - events            # Kubernetes events (errors, warnings, state changes)
+      - pods
+      - pods/log
+    verbs:
+      - get
+      - list
+      - watch
+
+  # Event inspection for troubleshooting
+  - apiGroups: [""]
+    resources:
+      - events
     verbs:
       - get
       - list
 
-  # ---------------------------------------------------------------------------
-  # Rule 3: Service Discovery (Optional, for future features)
-  # ---------------------------------------------------------------------------
-  # Allows:
-  # - kubectl get services
-  # - kubectl get endpoints
-  #
-  # Use case: AI might need to check service health or endpoint availability
-  # ---------------------------------------------------------------------------
+  # Service discovery
   - apiGroups: [""]
     resources:
-      - services          # Service definitions
-      - endpoints         # Service endpoint IPs
+      - services
+      - endpoints
     verbs:
       - get
       - list
 
-  # ---------------------------------------------------------------------------
-  # Rule 4: ConfigMap/Secret Reading (Limited)
-  # ---------------------------------------------------------------------------
-  # WARNING: Secrets contain sensitive data!
-  # 
-  # Current: COMMENTED OUT (not needed yet)
-  # Future: If AI needs to read config, enable ConfigMaps ONLY
-  #         NEVER grant blanket secret access
-  # ---------------------------------------------------------------------------
+  # ConfigMaps/Secrets: Currently disabled
+  # Uncomment ConfigMaps if needed (NEVER enable Secrets)
   # - apiGroups: [""]
   #   resources:
   #     - configmaps
   #   verbs:
   #     - get
   #     - list
-  # 
-  # NEVER DO THIS (even for debugging):
-  # - apiGroups: [""]
-  #   resources:
-  #     - secrets  # ❌ Contains passwords, tokens, certificates
-  #   verbs:
-  #     - get      # ❌ AI should NEVER read secrets
-
-# =============================================================================
-# What This Role CANNOT Do (Security Boundaries)
-# =============================================================================
-# ❌ Delete resources:
-#    kubectl delete pod frontend-xxx
-#    → Error: pods "frontend-xxx" is forbidden: User "system:serviceaccount:citrus:mcp-server-sa" 
-#             cannot delete resource "pods" in API group "" in the namespace "citrus"
-#
-# ❌ Create resources:
-#    kubectl run test --image=nginx
-#    → Error: forbidden: cannot create resource "pods"
-#
-# ❌ Execute commands:
-#    kubectl exec -it frontend-xxx -- /bin/sh
-#    → Error: forbidden: cannot create resource "pods/exec"
-#
-# ❌ Port forward:
-#    kubectl port-forward frontend-xxx 8080:8080
-#    → Error: forbidden: cannot create resource "pods/portforward"
-#
-# ❌ Scale deployments:
-#    kubectl scale deployment frontend --replicas=10
-#    → Error: forbidden: cannot update resource "deployments/scale"
-#
-# ❌ Access other namespaces:
-#    kubectl get pods -n kube-system
-#    → Error: No RBAC rules exist for other namespaces
-#
-# ✅ Can ONLY:
-#    - Read pod status, logs, events in "citrus" namespace
-#    - List services and endpoints
-#    - Nothing else
-# =============================================================================
 
 ---
-# =============================================================================
-# Component 3: RoleBinding (Authorization)
-# =============================================================================
-# Analogy: Badge assignment ("Give Alice the 'user_keychain'")
-#
-# What it does:
-# - Binds the Role (permissions) to the ServiceAccount (identity)
-# - Without this, the Role exists but nobody has it
-# - With this, Pods using "mcp-server-sa" inherit "mcp-server-readonly" permissions
-# =============================================================================
+# RoleBinding: Links ServiceAccount to Role
+# - Grants mcp-server-sa the permissions defined in mcp-server-readonly
+# - Only effective in citrus namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -213,91 +83,25 @@ metadata:
   namespace: citrus
   labels:
     app: mcp-server
-  annotations:
-    description: "Bind read-only permissions to MCP Server ServiceAccount"
-
-# WHO gets the permissions?
 subjects:
   - kind: ServiceAccount
-    name: mcp-server-sa        # Must match ServiceAccount name above
-    namespace: citrus          # Must match SA namespace
-
-# WHAT permissions do they get?
+    name: mcp-server-sa
+    namespace: citrus
 roleRef:
   kind: Role
-  name: mcp-server-readonly    # Must match Role name above
+  name: mcp-server-readonly
   apiGroup: rbac.authorization.k8s.io
 
-# This binding only works in the "citrus" namespace
-# If MCP Server tries to access "default" or "kube-system", it will fail
-
 # =============================================================================
-# Verification Steps (After Applying)
+# Deployment & Verification
 # =============================================================================
-# 1. Create a test Pod with this ServiceAccount:
-#    kubectl run test --image=nginx --serviceaccount=mcp-server-sa -n citrus
-#
-# 2. Verify the Pod can list pods:
-#    kubectl exec -it test -n citrus -- \
-#      sh -c "apk add curl && \
-#             curl -H 'Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)' \
-#             https://kubernetes.default.svc/api/v1/namespaces/citrus/pods"
-#    → Should return pod list (200 OK)
-#
-# 3. Verify the Pod CANNOT delete:
-#    kubectl exec -it test -n citrus -- \
-#      sh -c "curl -X DELETE -H 'Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)' \
-#             https://kubernetes.default.svc/api/v1/namespaces/citrus/pods/test"
-#    → Should return 403 Forbidden
-#
-# 4. Clean up:
-#    kubectl delete pod test -n citrus
-# =============================================================================
-
-# =============================================================================
-# Interview Talking Points
-# =============================================================================
-# Q: "Why not just use the default ServiceAccount?"
-# A: "Default SA often has more permissions than needed (violation of least
-#     privilege). By creating a dedicated SA, I can audit exactly what the
-#     MCP Server is doing and tightly control its permissions."
-#
-# Q: "What if the AI needs to perform remediations (like restarting pods)?"
-# A: "I would create a SEPARATE ServiceAccount with limited write permissions
-#     (e.g., only 'delete' on pods, nothing else) and require explicit user
-#     approval before using it. Read operations use mcp-server-sa, write
-#     operations use a different, more restricted SA."
-#
-# Q: "How does this relate to your Meshery experience?"
-# A: "In my Meshery project, I fixed RBAC issues during GKE→AKS migration.
-#     I learned that over-permissioned ServiceAccounts are a common security
-#     hole. Here, I applied that lesson proactively by designing minimal
-#     permissions from the start, rather than debugging permission errors later."
-#
-# Q: "What if you need more permissions in the future?"
-# A: "I would:
-#     1. Add a NEW rule to the Role (not expand existing ones)
-#     2. Document WHY the permission is needed
-#     3. Still exclude destructive operations
-#     4. Use separate Roles if different components need different permissions
-#     This keeps the permission evolution auditable and traceable."
-# =============================================================================
-
-# =============================================================================
-# Deployment Command
-# =============================================================================
-# Apply this RBAC configuration:
+# Apply:
 #   kubectl apply -f infra/rbac/mcp-server-rbac.yaml
 #
-# Verify creation:
-#   kubectl get sa mcp-server-sa -n citrus
-#   kubectl get role mcp-server-readonly -n citrus
-#   kubectl get rolebinding mcp-server-readonly-binding -n citrus
-#
-# Check permissions (requires kubectl-who-can plugin or manual API testing):
+# Verify permissions:
 #   kubectl auth can-i get pods --as=system:serviceaccount:citrus:mcp-server-sa -n citrus
-#   → yes
+#   # Expected: yes
 #
 #   kubectl auth can-i delete pods --as=system:serviceaccount:citrus:mcp-server-sa -n citrus
-#   → no
+#   # Expected: no
 # =============================================================================
