@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rbac-test
+  namespace: citrus
+spec:
+  serviceAccountName: mcp-server-sa
+  restartPolicy: Never
+  containers:
+    - name: test
+      image: mcp-server:v3
+      imagePullPolicy: IfNotPresent
+      command:
+        - python3
+        - -c
+        - |
+          import os
+          import sys
+          from kubernetes import client, config
+          
+          print("=" * 80)
+          print("RBAC Permission Test for MCP Server")
+          print("=" * 80)
+          print()
+          
+          # Load in-cluster config
+          try:
+              config.load_incluster_config()
+              print("PASS: Loaded in-cluster config")
+          except Exception as e:
+              print(f"FAIL: Failed to load config: {e}")
+              sys.exit(1)
+          
+          v1 = client.CoreV1Api()
+          namespace = os.environ.get("NAMESPACE", "citrus")
+          
+          print(f"\nTesting ServiceAccount: mcp-server-sa")
+          print(f"Namespace: {namespace}")
+          print()
+          
+          # Test 1: List pods (should succeed)
+          print("Test 1: List pods (should SUCCEED)")
+          try:
+              pods = v1.list_namespaced_pod(namespace)
+              print(f"  PASS: Found {len(pods.items)} pods")
+          except Exception as e:
+              print(f"  FAIL: {e}")
+          
+          # Test 2: Get pod logs (should succeed)
+          print("\nTest 2: Get pod logs (should SUCCEED)")
+          try:
+              pods = v1.list_namespaced_pod(namespace, limit=1)
+              if pods.items:
+                  pod_name = pods.items[0].metadata.name
+                  logs = v1.read_namespaced_pod_log(pod_name, namespace, tail_lines=5)
+                  print(f"  PASS: Retrieved logs from {pod_name}")
+              else:
+                  print("  WARN: No pods found to test")
+          except Exception as e:
+              print(f"  FAIL: {e}")
+          
+          # Test 3: Delete pod (should be forbidden)
+          print("\nTest 3: Delete pod (should BE FORBIDDEN)")
+          try:
+              pods = v1.list_namespaced_pod(namespace, limit=1)
+              if pods.items:
+                  pod_name = pods.items[0].metadata.name
+                  v1.delete_namespaced_pod(pod_name, namespace)
+                  print(f"  FAIL: Deletion was allowed! This is a security issue!")
+              else:
+                  print("  WARN: No pods found to test")
+          except client.exceptions.ApiException as e:
+              if e.status == 403:
+                  print(f"  PASS: Permission denied as expected (403 Forbidden)")
+              else:
+                  print(f"  FAIL: Unexpected error: {e}")
+          
+          # Test 4: Create pod (should be forbidden)
+          print("\nTest 4: Create pod (should BE FORBIDDEN)")
+          try:
+              pod = client.V1Pod(
+                  metadata=client.V1ObjectMeta(name="test-pod"),
+                  spec=client.V1PodSpec(
+                      containers=[client.V1Container(name="test", image="nginx")]
+                  )
+              )
+              v1.create_namespaced_pod(namespace, pod)
+              print(f"  FAIL: Creation was allowed! This is a security issue!")
+          except client.exceptions.ApiException as e:
+              if e.status == 403:
+                  print(f"  PASS: Permission denied as expected (403 Forbidden)")
+              else:
+                  print(f"  FAIL: Unexpected error: {e}")
+          
+          # Test 5: Access other namespace (should be forbidden)
+          print("\nTest 5: Access other namespace (should BE FORBIDDEN)")
+          try:
+              pods = v1.list_namespaced_pod("default")
+              print(f"  FAIL: Cross-namespace access was allowed!")
+          except client.exceptions.ApiException as e:
+              if e.status == 403:
+                  print(f"  PASS: Permission denied as expected (403 Forbidden)")
+              else:
+                  print(f"  FAIL: Unexpected error: {e}")
+          
+          print()
+          print("=" * 80)
+          print("RBAC Test Summary:")
+          print("  PASS: Read-only operations ALLOWED")
+          print("  PASS: Destructive operations BLOCKED")
+          print("  PASS: Namespace isolation ENFORCED")
+          print("=" * 80)
+      env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532

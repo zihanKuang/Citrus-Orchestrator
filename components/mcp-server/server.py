@@ -174,14 +174,24 @@ async def main():
     """Start the MCP server with stdio transport."""
     logger.info("Starting MCP server on stdio...")
     
-    async with stdio_server() as (read_stream, write_stream):
-        logger.info("Server ready. Waiting for client connection...")
-        
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options()
-        )
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            logger.info("Server ready. Waiting for client connection...")
+            
+            await server.run(
+                read_stream,
+                write_stream,
+                server.create_initialization_options()
+            )
+    except Exception as e:
+        logger.warning(f"stdio_server closed: {e}")
+    
+    # Keep container alive in Kubernetes (no stdin available in Pod)
+    logger.info("Server running in background mode. Press Ctrl+C to stop.")
+    try:
+        await asyncio.Event().wait()  # Wait forever
+    except asyncio.CancelledError:
+        logger.info("Server shutdown requested")
 
 
 if __name__ == "__main__":

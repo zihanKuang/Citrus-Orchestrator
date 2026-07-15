@@ -48,9 +48,9 @@ spec:
       
       containers:
         - name: mcp-server
-          # Build locally: docker build -t mcp-server:v1 .
-          # Load to cluster: kind load docker-image mcp-server:v1
-          image: mcp-server:v1
+          # Build locally: docker build -t mcp-server:v3 .
+          # Load to cluster: kind load docker-image mcp-server:v3
+          image: mcp-server:v3
           imagePullPolicy: IfNotPresent
           
           # Resource limits

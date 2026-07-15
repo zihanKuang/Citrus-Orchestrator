@@ -1,43 +1,45 @@
-# Multi-Stage Dockerfile for MCP Server
+# =============================================================================
+# Dockerfile for MCP Server
+# =============================================================================
+# Single-stage build using python:3.12-slim
+# - Ensures all C extensions and dependencies are correctly installed
+# - Smaller than full Python (179 MB vs 1 GB)
+# - Compatible with packages requiring compilation (pydantic-core, etc.)
+# =============================================================================
 
-# Stage 1: Builder (Build Dependencies)
+FROM python:3.12-slim
 
-FROM python:3.12-slim as builder
-
-# Set work directory for build
-WORKDIR /build
-
-# Copy only requirements first (Docker layer caching optimization)
-# If requirements.txt doesn't change, this layer is cached
-COPY requirements.txt .
-
-# Install dependencies to a specific directory (not system-wide)
-RUN pip install --no-cache-dir \
-    --target=/install \
-    -r requirements.txt
-
-# Stage 2: Runtime (Distroless)
-
-FROM gcr.io/distroless/python3-debian12
-
-# Set Python path to include our installed packages
-ENV PYTHONPATH=/usr/local/lib/python3.12/site-packages
-
-# Copy installed Python packages from builder stage
-COPY --from=builder /install /usr/local/lib/python3.12/site-packages
-
-# Set working directory for application
+# Set working directory
 WORKDIR /app
+
+# Copy requirements and install dependencies
+# Installing directly in the final image ensures all shared libraries are available
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY server.py /app/
 COPY tools/ /app/tools/
 
-# Distroless images don't have USER command working well, but they run as
-# non-root by default (user "nonroot", UID 65532)
-# This is automatically secure - no need to add USER directive
+# Run as non-root user for security
+USER 65532:65532
 
-# Set entry point
-# Note: Distroless uses a specific Python path
-# CMD must be in exec form (JSON array) because there's no shell
-CMD ["server.py"]
+# Set Python to unbuffered mode for better logging
+ENV PYTHONUNBUFFERED=1
+
+# Entry point
+CMD ["python3", "/app/server.py"]
+
+# =============================================================================
+# Build & Deploy
+# =============================================================================
+# Build:
+#   docker build -t mcp-server:v1 .
+#
+# Size: ~180 MB (vs 1 GB for full Python image)
+#
+# Trade-offs:
+# - Larger than distroless (~180 MB vs ~80 MB)
+# - Has shell (less secure, but easier to debug)
+# - Compatible with all Python packages including C extensions
+# =============================================================================
