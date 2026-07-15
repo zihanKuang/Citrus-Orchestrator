@@ -1,19 +1,11 @@
 # =============================================================================
-# Deployment Configuration for MCP Server
+# MCP Server Deployment
 # =============================================================================
-# Purpose: Deploy MCP Server as a Pod inside the Kubernetes cluster
-#
-# Key Features:
-# - Uses ServiceAccount with RBAC restrictions (not cluster-admin)
-# - Distroless container image (minimal attack surface)
-# - In-cluster config (auto-detects ServiceAccount token)
-# - Resource limits (prevents resource exhaustion)
-# - Health checks (for automatic restarts if server crashes)
-#
-# Deployment Model:
-# - Single replica (no need for HA yet)
-# - Runs continuously, waiting for MCP protocol requests
-# - Not exposed externally (internal service only)
+# Features:
+# - ServiceAccount with RBAC restrictions
+# - Distroless container (no shell)
+# - Resource limits and health checks
+# - Security hardening (readOnlyRootFilesystem, non-root user)
 # =============================================================================
 
 apiVersion: apps/v1
@@ -25,34 +17,19 @@ metadata:
     app: mcp-server
     component: ai-agent
     version: v1
-  annotations:
-    description: "MCP Server for AI-powered Kubernetes operations"
 spec:
-  # ---------------------------------------------------------------------------
-  # Replica Configuration
-  # ---------------------------------------------------------------------------
-  # Single replica is sufficient for now:
-  # - MCP Server is stateless (no data to sync)
-  # - Low traffic (only AI requests, not user-facing)
-  # - Easy to scale up later if needed
-  # ---------------------------------------------------------------------------
   replicas: 1
   
-  # How new pods replace old ones during updates
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 0  # Always keep at least 1 pod running
-      maxSurge: 1        # Allow 1 extra pod during update
+      maxUnavailable: 0
+      maxSurge: 1
   
-  # Select pods managed by this deployment
   selector:
     matchLabels:
       app: mcp-server
   
-  # ---------------------------------------------------------------------------
-  # Pod Template (What gets created)
-  # ---------------------------------------------------------------------------
   template:
     metadata:
       labels:
@@ -60,78 +37,43 @@ spec:
         component: ai-agent
         version: v1
       annotations:
-        # Prometheus scraping (if you add metrics later)
-        prometheus.io/scrape: "false"  # No metrics yet
-        
-        # Security context summary
+        prometheus.io/scrape: "false"
         seccomp.security.alpha.kubernetes.io/pod: runtime/default
     
     spec:
-      # -----------------------------------------------------------------------
-      # Security: Use Custom ServiceAccount (NOT default)
-      # -----------------------------------------------------------------------
-      # This is THE KEY security control
-      # - Pod gets identity "mcp-server-sa" (not "default")
-      # - Kubernetes injects token at /var/run/secrets/.../token
-      # - RBAC rules apply based on this ServiceAccount
-      # - If this line is missing, Pod uses "default" SA (often too permissive)
-      # -----------------------------------------------------------------------
+      # Security: Use custom ServiceAccount (not default)
+      # Token auto-injected at /var/run/secrets/kubernetes.io/serviceaccount/token
       serviceAccountName: mcp-server-sa
-      
-      # Don't mount default service account token if SA not specified
-      # (Defense in depth - but we DO want the token since we specify SA)
       automountServiceAccountToken: true
       
-      # -----------------------------------------------------------------------
-      # Container Definition
-      # -----------------------------------------------------------------------
       containers:
         - name: mcp-server
-          # IMAGE: You need to build and push this image first
-          # Local development: docker build -t mcp-server:v1 .
-          # Production: Push to Docker Hub, GHCR, or private registry
+          # Build locally: docker build -t mcp-server:v1 .
+          # Load to cluster: kind load docker-image mcp-server:v1
           image: mcp-server:v1
-          imagePullPolicy: IfNotPresent  # Use local image if available
+          imagePullPolicy: IfNotPresent
           
-          # -----------------------------------------------------------------------
-          # Resource Limits (Prevent Resource Exhaustion)
-          # -----------------------------------------------------------------------
-          # Why this matters:
-          # - LLM responses can be memory-intensive (large context windows)
-          # - Without limits, one runaway Pod can starve other apps
-          # - With limits, Kubernetes will kill the Pod if it exceeds
-          # -----------------------------------------------------------------------
+          # Resource limits
           resources:
             requests:
-              cpu: 100m        # Minimum CPU (0.1 cores)
-              memory: 128Mi    # Minimum RAM
+              cpu: 100m
+              memory: 128Mi
             limits:
-              cpu: 500m        # Maximum CPU (0.5 cores)
-              memory: 512Mi    # Maximum RAM (will be killed if exceeded)
+              cpu: 500m
+              memory: 512Mi
           
-          # -----------------------------------------------------------------------
-          # Health Checks (Automatic Recovery)
-          # -----------------------------------------------------------------------
-          # Kubernetes will restart the Pod if these checks fail
-          # -----------------------------------------------------------------------
-          
-          # Liveness Probe: Is the server still running?
-          # If this fails 3 times, Kubernetes kills and restarts the Pod
+          # Liveness probe: restart if unhealthy
           livenessProbe:
             exec:
-              # Check if Python process is running
-              # Note: Distroless doesn't have 'ps', so we check file existence
               command:
                 - cat
                 - /app/server.py
-            initialDelaySeconds: 10  # Wait 10s after start before checking
-            periodSeconds: 30        # Check every 30 seconds
+            initialDelaySeconds: 10
+            periodSeconds: 30
             timeoutSeconds: 5
-            failureThreshold: 3      # Fail 3 times before restart
+            failureThreshold: 3
           
-          # Readiness Probe: Is the server ready to accept requests?
-          # If this fails, Kubernetes removes Pod from Service endpoints
-          # (Not critical for MCP Server since it's not load-balanced)
+          # Readiness probe: mark ready when healthy
           readinessProbe:
             exec:
               command:
@@ -142,144 +84,55 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
           
-          # -----------------------------------------------------------------------
-          # Environment Variables
-          # -----------------------------------------------------------------------
+          # Environment variables
           env:
-            # Python optimizations
             - name: PYTHONUNBUFFERED
-              value: "1"  # No output buffering (better logs)
-            
-            # Namespace (for K8s API calls)
+              value: "1"
             - name: NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
           
-          # -----------------------------------------------------------------------
-          # Security Context (Container-Level)
-          # -----------------------------------------------------------------------
-          # Additional security hardening beyond distroless
-          # -----------------------------------------------------------------------
+          # Security context: container-level hardening
           securityContext:
-            # Run as non-root user (distroless default is UID 65532)
             runAsNonRoot: true
-            runAsUser: 65532
-            
-            # Read-only root filesystem (prevents writing to /)
-            # Application can ONLY write to mounted volumes (if any)
+            runAsUser: 65532  # distroless nonroot user
             readOnlyRootFilesystem: true
-            
-            # Drop all Linux capabilities (reduce kernel attack surface)
+            allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
-            
-            # Prevent privilege escalation (can't become root)
-            allowPrivilegeEscalation: false
-          
-          # -----------------------------------------------------------------------
-          # Volume Mounts (Currently None)
-          # -----------------------------------------------------------------------
-          # If you need to mount config files or cache, add them here
-          # volumeMounts:
-          #   - name: tmp
-          #     mountPath: /tmp  # Writable temp directory
       
-      # -----------------------------------------------------------------------
-      # Volumes (Currently None)
-      # -----------------------------------------------------------------------
-      # If you need writable directories (since rootfs is read-only), add emptyDir:
-      # volumes:
-      #   - name: tmp
-      #     emptyDir: {}  # Ephemeral directory (deleted when Pod dies)
-      
-      # -----------------------------------------------------------------------
-      # Pod Security (Pod-Level)
-      # -----------------------------------------------------------------------
+      # Security context: pod-level settings
       securityContext:
-        # Drop privileges at Pod level (affects all containers)
-        fsGroup: 65532        # Files created will have this group ID
-        runAsNonRoot: true    # Enforce non-root at Pod level
+        runAsNonRoot: true
         runAsUser: 65532
-        
-        # Seccomp: Limit system calls (reduces kernel attack surface)
+        fsGroup: 65532
         seccompProfile:
-          type: RuntimeDefault  # Use default seccomp profile
+          type: RuntimeDefault
       
-      # -----------------------------------------------------------------------
-      # Scheduling (Where should this Pod run?)
-      # -----------------------------------------------------------------------
-      # These are optional optimizations - can be removed for simplicity
-      # -----------------------------------------------------------------------
-      
-      # Restart policy
-      restartPolicy: Always  # Always restart if Pod crashes
-      
-      # DNS policy (default is fine)
+      restartPolicy: Always
       dnsPolicy: ClusterFirst
-      
-      # Tolerations (allow Pod to run on tainted nodes if needed)
-      # tolerations:
-      #   - key: node-role.kubernetes.io/control-plane
-      #     operator: Exists
-      #     effect: NoSchedule
 
 # =============================================================================
 # Deployment Commands
 # =============================================================================
-# 1. Build and load Docker image (if using local cluster):
+# 1. Build and load image:
 #    cd components/mcp-server
 #    docker build -t mcp-server:v1 .
-#    
-#    # For kind cluster:
-#    kind load docker-image mcp-server:v1
-#    
-#    # For minikube:
-#    minikube image load mcp-server:v1
+#    kind load docker-image mcp-server:v1  # for kind
 #
-# 2. Apply RBAC first (if not done):
+# 2. Apply RBAC (if not done):
 #    kubectl apply -f infra/rbac/mcp-server-rbac.yaml
 #
-# 3. Deploy MCP Server:
+# 3. Deploy:
 #    kubectl apply -f infra/manifests/mcp-server-deployment.yaml
 #
-# 4. Verify deployment:
+# 4. Verify:
 #    kubectl get pods -n citrus -l app=mcp-server
 #    kubectl logs -n citrus -l app=mcp-server --tail=50
 #
-# 5. Check RBAC is working:
-#    kubectl exec -it -n citrus <mcp-server-pod> -- python3 -c "from kubernetes import client, config; config.load_incluster_config(); v1=client.CoreV1Api(); print(v1.list_namespaced_pod('citrus'))"
-#    # Should succeed (allowed by RBAC)
-#    
-#    kubectl exec -it -n citrus <mcp-server-pod> -- python3 -c "from kubernetes import client, config; config.load_incluster_config(); v1=client.CoreV1Api(); v1.delete_namespaced_pod('test', 'citrus')"
-#    # Should fail with 403 Forbidden (blocked by RBAC)
-# =============================================================================
-
-# =============================================================================
-# Interview Talking Points
-# =============================================================================
-# Q: "Why single replica instead of HA (high availability)?"
-# A: "MCP Server is stateless and serves internal AI requests, not user traffic.
-#     Single replica is simpler to debug and sufficient for current load.
-#     If we need HA later, I can add a Service + multiple replicas + HPA
-#     (Horizontal Pod Autoscaler) based on CPU/memory metrics."
-#
-# Q: "Why readOnlyRootFilesystem?"
-# A: "Defense in depth. Even if an attacker exploits a vulnerability and has
-#     code execution, they can't write backdoors to /usr/bin or modify
-#     application files. Combined with distroless (no shell), this makes
-#     post-exploitation nearly impossible."
-#
-# Q: "What if the Python code needs to write temporary files?"
-# A: "I'd mount an emptyDir volume to /tmp. It's ephemeral (deleted when Pod
-#     dies), so no persistent state leaks. For anything persistent, I'd use
-#     PersistentVolumeClaim or external storage."
-#
-# Q: "How do you debug if there's no shell?"
-# A: "Three strategies:
-#     1. kubectl logs -n citrus <pod> --tail=100 (view application logs)
-#     2. kubectl port-forward to inspect locally
-#     3. kubectl debug --image=busybox (ephemeral debug container in K8s 1.23+)
-#     Never compromise production security for debugging convenience."
+# 5. Test RBAC:
+#    kubectl cp components/mcp-server/test-rbac.py citrus/<pod>:/tmp/
+#    kubectl exec -n citrus <pod> -- python3 /tmp/test-rbac.py
 # =============================================================================
