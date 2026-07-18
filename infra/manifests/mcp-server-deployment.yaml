@@ -118,21 +118,21 @@ spec:
 # Deployment Commands
 # =============================================================================
 # 1. Build and load image:
-#    cd components/mcp-server
-#    docker build -t mcp-server:v1 .
-#    kind load docker-image mcp-server:v1  # for kind
+# cd components/mcp-server
+# docker build -t mcp-server:v1 .
+# kind load docker-image mcp-server:v1  # for kind
 #
 # 2. Apply RBAC (if not done):
-#    kubectl apply -f infra/rbac/mcp-server-rbac.yaml
+# kubectl apply -f infra/rbac/mcp-server-rbac.yaml
 #
 # 3. Deploy:
-#    kubectl apply -f infra/manifests/mcp-server-deployment.yaml
+# kubectl apply -f infra/manifests/mcp-server-deployment.yaml
 #
 # 4. Verify:
-#    kubectl get pods -n citrus -l app=mcp-server
-#    kubectl logs -n citrus -l app=mcp-server --tail=50
+# kubectl get pods -n citrus -l app=mcp-server
+# kubectl logs -n citrus -l app=mcp-server --tail=50
 #
 # 5. Test RBAC:
-#    kubectl cp components/mcp-server/test-rbac.py citrus/<pod>:/tmp/
-#    kubectl exec -n citrus <pod> -- python3 /tmp/test-rbac.py
+# kubectl cp components/mcp-server/test-rbac.py citrus/<pod>:/tmp/
+# kubectl exec -n citrus <pod> -- python3 /tmp/test-rbac.py
 # =============================================================================

@@ -61,7 +61,7 @@ async def main():
     
     # Validate API key
     if not config.api_key:
-        print("❌ Error: GEMINI_API_KEY environment variable not set")
+        print("Error: GEMINI_API_KEY environment variable not set")
         print("\nSet it with:")
         print("  export GEMINI_API_KEY='your-api-key'")
         sys.exit(1)
@@ -91,7 +91,7 @@ async def main():
 async def interactive_mode(agent: ReActAgent):
     """Interactive REPL mode"""
     print("\n" + "="*80)
-    print("🤖 ReAct Agent - Interactive Mode")
+    print("ReAct Agent - Interactive Mode")
     print("="*80)
     print("Type your queries below. Type 'exit' or 'quit' to exit.\n")
     
@@ -104,7 +104,7 @@ async def interactive_mode(agent: ReActAgent):
                 continue
             
             if query.lower() in ["exit", "quit", "q"]:
-                print("\n👋 Goodbye!\n")
+                print("\nGoodbye!\n")
                 break
             
             # Run agent
@@ -113,10 +113,10 @@ async def interactive_mode(agent: ReActAgent):
             print(f"\nAgent: {result}\n")
         
         except KeyboardInterrupt:
-            print("\n\n👋 Interrupted. Goodbye!\n")
+            print("\n\nInterrupted. Goodbye!\n")
             break
         except EOFError:
-            print("\n\n👋 Goodbye!\n")
+            print("\n\nGoodbye!\n")
             break
 
 

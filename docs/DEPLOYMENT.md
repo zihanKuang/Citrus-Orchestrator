@@ -194,7 +194,7 @@ kubectl port-forward -n citrus svc/monitoring-kube-prometheus-prometheus 9090:90
 Open browser: http://localhost:9090
 
 **What to check:**
-- Status → Targets: Should show all ServiceMonitors
+- Status -> Targets: Should show all ServiceMonitors
 - Graph: Query metrics like `up`, `http_requests_total`
 
 #### 5.3 Access Grafana

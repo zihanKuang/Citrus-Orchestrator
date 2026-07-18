@@ -42,9 +42,9 @@ spec:
           print("Test 1: List pods (should SUCCEED)")
           try:
               pods = v1.list_namespaced_pod(namespace)
-              print(f"  PASS: Found {len(pods.items)} pods")
+              print(f"PASS: Found {len(pods.items)} pods")
           except Exception as e:
-              print(f"  FAIL: {e}")
+              print(f"FAIL: {e}")
           
           # Test 2: Get pod logs (should succeed)
           print("\nTest 2: Get pod logs (should SUCCEED)")
@@ -53,11 +53,11 @@ spec:
               if pods.items:
                   pod_name = pods.items[0].metadata.name
                   logs = v1.read_namespaced_pod_log(pod_name, namespace, tail_lines=5)
-                  print(f"  PASS: Retrieved logs from {pod_name}")
+                  print(f"PASS: Retrieved logs from {pod_name}")
               else:
                   print("  WARN: No pods found to test")
           except Exception as e:
-              print(f"  FAIL: {e}")
+              print(f"FAIL: {e}")
           
           # Test 3: Delete pod (should be forbidden)
           print("\nTest 3: Delete pod (should BE FORBIDDEN)")
@@ -66,14 +66,14 @@ spec:
               if pods.items:
                   pod_name = pods.items[0].metadata.name
                   v1.delete_namespaced_pod(pod_name, namespace)
-                  print(f"  FAIL: Deletion was allowed! This is a security issue!")
+                  print(f"FAIL: Deletion was allowed! This is a security issue!")
               else:
                   print("  WARN: No pods found to test")
           except client.exceptions.ApiException as e:
               if e.status == 403:
-                  print(f"  PASS: Permission denied as expected (403 Forbidden)")
+                  print(f"PASS: Permission denied as expected (403 Forbidden)")
               else:
-                  print(f"  FAIL: Unexpected error: {e}")
+                  print(f"FAIL: Unexpected error: {e}")
           
           # Test 4: Create pod (should be forbidden)
           print("\nTest 4: Create pod (should BE FORBIDDEN)")
@@ -85,23 +85,23 @@ spec:
                   )
               )
               v1.create_namespaced_pod(namespace, pod)
-              print(f"  FAIL: Creation was allowed! This is a security issue!")
+              print(f"FAIL: Creation was allowed! This is a security issue!")
           except client.exceptions.ApiException as e:
               if e.status == 403:
-                  print(f"  PASS: Permission denied as expected (403 Forbidden)")
+                  print(f"PASS: Permission denied as expected (403 Forbidden)")
               else:
-                  print(f"  FAIL: Unexpected error: {e}")
+                  print(f"FAIL: Unexpected error: {e}")
           
           # Test 5: Access other namespace (should be forbidden)
           print("\nTest 5: Access other namespace (should BE FORBIDDEN)")
           try:
               pods = v1.list_namespaced_pod("default")
-              print(f"  FAIL: Cross-namespace access was allowed!")
+              print(f"FAIL: Cross-namespace access was allowed!")
           except client.exceptions.ApiException as e:
               if e.status == 403:
-                  print(f"  PASS: Permission denied as expected (403 Forbidden)")
+                  print(f"PASS: Permission denied as expected (403 Forbidden)")
               else:
-                  print(f"  FAIL: Unexpected error: {e}")
+                  print(f"FAIL: Unexpected error: {e}")
           
           print()
           print("=" * 80)

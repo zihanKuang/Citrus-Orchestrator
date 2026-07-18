@@ -328,11 +328,11 @@ Visualizes:
 
 Example trace flow:
 ```
-Frontend → AdService → RecommendationService → ProductCatalog
+Frontend -> AdService -> RecommendationService -> ProductCatalog
    ↓
-CartService → Redis
+CartService -> Redis
    ↓
-CheckoutService → PaymentService → ShippingService
+CheckoutService -> PaymentService -> ShippingService
 ```
 
 ### Metrics (Prometheus)

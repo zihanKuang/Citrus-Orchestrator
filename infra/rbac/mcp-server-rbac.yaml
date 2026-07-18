@@ -96,12 +96,12 @@ roleRef:
 # Deployment & Verification
 # =============================================================================
 # Apply:
-#   kubectl apply -f infra/rbac/mcp-server-rbac.yaml
+# kubectl apply -f infra/rbac/mcp-server-rbac.yaml
 #
 # Verify permissions:
-#   kubectl auth can-i get pods --as=system:serviceaccount:citrus:mcp-server-sa -n citrus
-#   # Expected: yes
+# kubectl auth can-i get pods --as=system:serviceaccount:citrus:mcp-server-sa -n citrus
+# # Expected: yes
 #
-#   kubectl auth can-i delete pods --as=system:serviceaccount:citrus:mcp-server-sa -n citrus
-#   # Expected: no
+# kubectl auth can-i delete pods --as=system:serviceaccount:citrus:mcp-server-sa -n citrus
+# # Expected: no
 # =============================================================================

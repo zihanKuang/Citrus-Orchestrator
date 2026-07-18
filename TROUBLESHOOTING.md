@@ -1,6 +1,6 @@
 # Troubleshooting Guide: Citrus-Orchestrator
 
-This document chronicles all issues encountered and their resolutions. Each entry follows the format: **Symptom → Investigation → Root Cause → Solution**.
+This document chronicles all issues encountered and their resolutions. Each entry follows the format: **Symptom -> Investigation -> Root Cause -> Solution**.
 
 ---
 
@@ -142,7 +142,7 @@ Error: unable to forward port: service has no exposed ports
 ```bash
 $ kubectl get svc citrus-jaeger-agent -n citrus -o yaml
 spec:
-  clusterIP: None  # ← Headless service
+  clusterIP: None  # <- Headless service
   ports:
   - port: 6831
 ```
@@ -263,7 +263,7 @@ storage:
 ### 7. Prometheus Shows 0/0 Targets
 
 **Symptom:**
-Prometheus UI → Status → Targets shows empty list.
+Prometheus UI -> Status -> Targets shows empty list.
 
 **Investigation:**
 ```bash
@@ -437,7 +437,7 @@ helm get manifest citrus -n citrus
 
 | Category | Key Insight |
 |----------|-------------|
-| **Networking** | Always verify port alignment: Dockerfile → targetPort → Service port |
+| **Networking** | Always verify port alignment: Dockerfile -> targetPort -> Service port |
 | **Observability** | Don't assume OTEL standard compliance - check source code |
 | **Resources** | Start with 2x the expected memory, tune down based on `kubectl top` |
 | **Templating** | Use `helm template --debug` before every apply |

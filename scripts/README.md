@@ -89,9 +89,9 @@ python aiops-agent.py --mode analyze --alert-file alert.json
 - Mock mode for testing
 
 **Decision Logic:**
-- Error rate > 1.2x baseline → Rollback
-- P99 latency > 1.5x baseline → Rollback
-- Health checks failing → Rollback
+- Error rate > 1.2x baseline -> Rollback
+- P99 latency > 1.5x baseline -> Rollback
+- Health checks failing -> Rollback
 
 **Example:**
 

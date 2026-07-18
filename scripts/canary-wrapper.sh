@@ -13,13 +13,13 @@
 # - Detailed error reporting
 #
 # Usage:
-#   ./canary-wrapper.sh --service recommendationservice \
-#                       --baseline ghcr.io/user/app:v1.0 \
-#                       --canary ghcr.io/user/app:v1.1
+# ./canary-wrapper.sh --service recommendationservice \
+# --baseline ghcr.io/user/app:v1.0 \
+# --canary ghcr.io/user/app:v1.1
 #
-#   # Mock mode (for testing):
-#   MOCK_MODE=1 MOCK_ERROR_RATIO=0.8 MOCK_LATENCY_RATIO=0.9 \
-#     ./canary-wrapper.sh --service test --baseline v1 --canary v2
+# # Mock mode (for testing):
+# MOCK_MODE=1 MOCK_ERROR_RATIO=0.8 MOCK_LATENCY_RATIO=0.9 \
+# ./canary-wrapper.sh --service test --baseline v1 --canary v2
 
 set -euo pipefail
 

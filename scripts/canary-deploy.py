@@ -39,7 +39,7 @@ class PrometheusClient:
                 return float(data['data']['result'][0]['value'][1])
             return None
         except Exception as e:
-            print(f"⚠️  Prometheus query failed: {e}")
+            print(f"Prometheus query failed: {e}")
             return None
 
     def query_range(self, promql: str, duration_minutes: int = 5) -> Dict:
@@ -61,7 +61,7 @@ class PrometheusClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"⚠️  Prometheus range query failed: {e}")
+            print(f"Prometheus range query failed: {e}")
             return {}
 
 
