@@ -36,14 +36,14 @@ jobs:
           helm template monitoring prometheus-community/kube-prometheus-stack \
             --values deploy/helm/monitoring-stack-values.yaml \
             --dry-run > /dev/null
-          echo "✓ Monitoring stack values are valid"
+          echo "Monitoring stack values are valid"
 
       - name: Validate Jaeger Values
         run: |
           helm template jaeger jaegertracing/jaeger \
             --values deploy/helm/jaeger-values.yaml \
             --dry-run > /dev/null
-          echo "✓ Jaeger values are valid"
+          echo "Jaeger values are valid"
 
       - name: Validate OpenTelemetry Demo Values
         run: |
@@ -51,7 +51,7 @@ jobs:
             --version 0.40.9 \
             --values deploy/helm/otel-demo-values.yaml \
             --dry-run > /dev/null
-          echo "✓ OpenTelemetry Demo values are valid"
+          echo "OpenTelemetry Demo values are valid"
 
   validate-deployment-scripts:
     name: Validate Deployment Scripts
@@ -68,17 +68,17 @@ jobs:
       - name: Syntax Check - Deploy All
         run: |
           pwsh -Command "Test-Path scripts/deployment/0-deploy-all.ps1"
-          pwsh -Command "Get-Command scripts/deployment/0-deploy-all.ps1" || echo "✓ Script syntax valid"
+          pwsh -Command "Get-Command scripts/deployment/0-deploy-all.ps1" || echo "Script syntax valid"
 
       - name: Syntax Check - Deploy Infrastructure
         run: |
           pwsh -Command "Test-Path scripts/deployment/1-deploy-infrastructure.ps1"
-          pwsh -Command "Get-Command scripts/deployment/1-deploy-infrastructure.ps1" || echo "✓ Script syntax valid"
+          pwsh -Command "Get-Command scripts/deployment/1-deploy-infrastructure.ps1" || echo "Script syntax valid"
 
       - name: Syntax Check - Deploy Application
         run: |
           pwsh -Command "Test-Path scripts/deployment/2-deploy-application.ps1"
-          pwsh -Command "Get-Command scripts/deployment/2-deploy-application.ps1" || echo "✓ Script syntax valid"
+          pwsh -Command "Get-Command scripts/deployment/2-deploy-application.ps1" || echo "Script syntax valid"
 
   validate-documentation:
     name: Validate Documentation
@@ -91,10 +91,10 @@ jobs:
       - name: Check Required Documentation Files
         run: |
           echo "Checking documentation files..."
-          test -f README.md && echo "✓ README.md exists"
-          test -f docs/DEPLOYMENT.md && echo "✓ DEPLOYMENT.md exists"
-          test -f scripts/README.md && echo "✓ scripts/README.md exists"
-          test -f scripts/deployment/README.md && echo "✓ deployment/README.md exists"
+          test -f README.md && echo "README.md exists"
+          test -f docs/DEPLOYMENT.md && echo "DEPLOYMENT.md exists"
+          test -f scripts/README.md && echo "scripts/README.md exists"
+          test -f scripts/deployment/README.md && echo "deployment/README.md exists"
 
       - name: Check Markdown Links (Optional)
         uses: gaurav-nelson/github-action-markdown-link-check@v1
@@ -121,13 +121,13 @@ jobs:
           echo "========================================="
           
           if [ "${{ needs.validate-helm-configs.result }}" != "success" ]; then
-            echo "❌ Helm configuration validation failed"
+            echo "Helm configuration validation failed"
             exit 1
           fi
           
           if [ "${{ needs.validate-deployment-scripts.result }}" != "success" ]; then
-            echo "❌ Deployment script validation failed"
+            echo "Deployment script validation failed"
             exit 1
           fi
           
-          echo "✓ All validations passed!"
+          echo "All validations passed!"
