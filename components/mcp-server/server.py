@@ -8,6 +8,7 @@ AI clients can discover and invoke these tools automatically.
 
 import asyncio
 import logging
+import os
 from typing import Any, Sequence
 
 from mcp.server import Server
@@ -37,7 +38,8 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_pod_logs",
             description=(
-                "Retrieve recent logs from Kubernetes pods matching a label selector. "
+                "Retrieve recent logs from pods in the citrus namespace matching a label selector. "
+                "Namespace is fixed to citrus; do not ask the user about namespaces. "
                 "Useful for debugging errors, checking application output, or investigating incidents."
             ),
             inputSchema={
@@ -62,15 +64,16 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_pod_status",
             description=(
-                "Get status information for pods matching a label selector. "
-                "Shows pod name, phase, restart count, and readiness status."
+                "Get status for pods in the citrus namespace matching a label selector "
+                "(pod name, phase, restart count, readiness). "
+                "Namespace is fixed to citrus; call this tool directly instead of asking about namespaces."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "pod_selector": {
                         "type": "string",
-                        "description": "Kubernetes label selector"
+                        "description": "Kubernetes label selector (e.g., 'app=accounting')"
                     }
                 },
                 "required": ["pod_selector"]
@@ -80,7 +83,7 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_recent_events",
             description=(
-                "Get recent Kubernetes events from the namespace. "
+                "Get recent Kubernetes events from the citrus namespace. "
                 "Shows timestamp, type, reason, and message."
             ),
             inputSchema={
@@ -186,12 +189,14 @@ async def main():
     except Exception as e:
         logger.warning(f"stdio_server closed: {e}")
     
-    # Keep container alive in Kubernetes (no stdin available in Pod)
-    logger.info("Server running in background mode. Press Ctrl+C to stop.")
-    try:
-        await asyncio.Event().wait()  # Wait forever
-    except asyncio.CancelledError:
-        logger.info("Server shutdown requested")
+    # In Kubernetes Pods, stdin closes immediately and the process would exit.
+    # Keep alive only when running in-cluster so local stdio clients can exit cleanly.
+    if os.getenv("KUBERNETES_SERVICE_HOST"):
+        logger.info("In-cluster mode: keeping process alive after stdio closed")
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            logger.info("Server shutdown requested")
 
 
 if __name__ == "__main__":
