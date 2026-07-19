@@ -25,8 +25,8 @@ async def main():
     
     parser.add_argument(
         "--model",
-        default="gemini-2.0-flash-exp",
-        help="LLM model to use (default: gemini-2.0-flash-exp)"
+        default="gemini-2.5-flash",
+        help="LLM model to use (default: gemini-2.5-flash)"
     )
     
     parser.add_argument(
