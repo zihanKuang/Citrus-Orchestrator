@@ -5,6 +5,7 @@ Orchestrates LLM reasoning with tool execution
 Architecture inspired by Source-Code patterns
 """
 import asyncio
+import logging
 import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -44,7 +45,8 @@ class ReActAgent:
         # Clients
         self.mcp_client = MCPClient(
             command=config.mcp_server_command,
-            args=config.mcp_server_args
+            args=config.mcp_server_args,
+            cwd=config.mcp_server_cwd,
         )
         self.llm_client = LLMClient(
             provider=config.llm_provider,
@@ -154,8 +156,13 @@ class ReActAgent:
             except LLMError as e:
                 log_agent_error("LLM error", error=e)
                 self.stats["errors"] += 1
-                
-                # Add error to conversation and retry
+
+                # Don't burn the whole budget on repeated identical API failures
+                if self.stats["errors"] >= 2:
+                    return (
+                        f"Agent stopped after repeated LLM errors: {e}"
+                    )
+
                 self.messages.append({
                     "role": "assistant",
                     "content": f"Error calling LLM: {e}. Retrying..."
