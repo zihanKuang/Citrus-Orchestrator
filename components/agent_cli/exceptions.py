@@ -1,4 +1,4 @@
-"""
+﻿"""
 Custom exceptions for Agent CLI
 
 Inspired by Cluade-Code/services/api/errors.ts

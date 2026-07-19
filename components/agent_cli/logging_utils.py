@@ -1,4 +1,4 @@
-"""
+﻿"""
 Logging utilities
 
 Inspired by Cluade-Code's specialized logging functions
