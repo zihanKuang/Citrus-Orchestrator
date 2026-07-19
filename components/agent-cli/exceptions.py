@@ -1,11 +1,19 @@
 """
 Custom exceptions for Agent CLI
+
+Inspired by Cluade-Code/services/api/errors.ts
 """
 
 
 class AgentException(Exception):
     """Base exception for all agent errors"""
-    pass
+    
+    def __init__(self, message: str, original_error: Exception = None):
+        super().__init__(message)
+        
+        # Preserve original stack trace (inspired by Cluade-Code)
+        if original_error and hasattr(original_error, '__traceback__'):
+            self.__traceback__ = original_error.__traceback__
 
 
 class ToolNotFoundError(AgentException):
