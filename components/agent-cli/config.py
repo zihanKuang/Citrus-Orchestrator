@@ -21,9 +21,12 @@ class AgentConfig:
     
     # Agent settings
     max_steps: int = 10
+    
+    # Retry settings (inspired by Cluade-Code/services/api/withRetry.ts)
     max_retries: int = 3
-    base_retry_delay: float = 1.0
-    max_retry_delay: float = 16.0
+    base_retry_delay_ms: int = 500  # Match Cluade-Code: BASE_DELAY_MS
+    max_retry_delay_ms: int = 32000  # Match Cluade-Code: maxDelayMs
+    retry_jitter_factor: float = 0.25  # Add random jitter to avoid thundering herd
     
     # Context settings
     max_content_length: int = 4000

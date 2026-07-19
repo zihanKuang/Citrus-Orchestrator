@@ -1,14 +1,11 @@
 """
 LLM Client - Handles calls to Language Model APIs
 """
-import logging
 from typing import List, Dict, Any, Optional
 import google.generativeai as genai
 
 from .exceptions import LLMError
-
-
-logger = logging.getLogger(__name__)
+from .logging_utils import log_llm_debug, log_llm_error
 
 
 class LLMClient:
@@ -44,7 +41,7 @@ class LLMClient:
             }
         )
         
-        logger.info(f"✅ Initialized Gemini model: {self.model_name}")
+        log_llm_debug(f"Initialized Gemini model: {self.model_name}")
     
     async def generate_with_tools(
         self,
@@ -81,8 +78,8 @@ class LLMClient:
             return self._parse_gemini_response(response)
             
         except Exception as e:
-            logger.error(f"LLM generation failed: {e}")
-            raise LLMError(f"LLM generation failed: {e}")
+            log_llm_error("LLM generation failed", error=e)
+            raise LLMError(f"LLM generation failed: {e}", original_error=e)
     
     def _convert_messages_to_gemini(self, messages: List[Dict[str, Any]]) -> List[str]:
         """Convert standard message format to Gemini format"""

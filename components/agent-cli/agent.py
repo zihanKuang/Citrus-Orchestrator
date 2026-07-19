@@ -1,9 +1,10 @@
 """
 ReAct Agent - Hand-written implementation
 Orchestrates LLM reasoning with tool execution
+
+Architecture inspired by Source-Code patterns
 """
 import asyncio
-import logging
 import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -11,6 +12,8 @@ from datetime import datetime
 from .config import AgentConfig
 from .mcp_client import MCPClient
 from .llm_client import LLMClient
+from .retry_utils import get_retry_delay
+from .logging_utils import log_agent_debug, log_agent_info, log_agent_error
 from .exceptions import (
     MaxStepsExceededError,
     ToolExecutionError,
@@ -18,9 +21,6 @@ from .exceptions import (
     ToolNotFoundError,
     LLMError
 )
-
-
-logger = logging.getLogger(__name__)
 
 
 class ReActAgent:
@@ -68,6 +68,8 @@ class ReActAgent:
         
         # Setup logging
         self._setup_logging()
+        
+        log_agent_info("Agent initialized")
     
     def _setup_logging(self):
         """Setup logging configuration"""
@@ -88,14 +90,14 @@ class ReActAgent:
     
     async def initialize(self):
         """Initialize agent (connect to MCP server, fetch tools)"""
-        logger.info("Initializing agent...")
+        log_agent_info("Initializing agent...")
         
         # Connect to MCP server
         await self.mcp_client.connect()
         
         # Get available tools
         self.tools = self.mcp_client.get_tools()
-        logger.info(f"Agent ready with {len(self.tools)} tools")
+        log_agent_info(f"Agent ready with {len(self.tools)} tools")
     
     async def cleanup(self):
         """Cleanup resources"""
@@ -118,17 +120,17 @@ class ReActAgent:
             {"role": "user", "content": user_query}
         ]
         
-        logger.info(f"🚀 Starting ReAct loop for: {user_query}")
+        log_agent_info(f"Starting ReAct loop for: {user_query}")
         
         try:
             result = await self._react_loop()
             return result
         except MaxStepsExceededError:
-            logger.warning(f"⚠️ Exceeded max steps ({self.config.max_steps})")
-            return "❌ Agent exceeded maximum reasoning steps without reaching a conclusion."
+            log_agent_error(f"Exceeded max steps ({self.config.max_steps})")
+            return "Agent exceeded maximum reasoning steps without reaching a conclusion."
         except Exception as e:
-            logger.error(f"❌ Agent error: {e}", exc_info=True)
-            return f"❌ Agent encountered an error: {str(e)}"
+            log_agent_error("Agent error", error=e)
+            return f"Agent encountered an error: {str(e)}"
         finally:
             self.stats["end_time"] = time.time()
             self._print_stats()
@@ -139,9 +141,9 @@ class ReActAgent:
         for step in range(self.config.max_steps):
             self.stats["total_steps"] = step + 1
             
-            logger.info(f"\n{'='*80}")
-            logger.info(f"Step {step + 1}/{self.config.max_steps}")
-            logger.info(f"{'='*80}")
+            log_agent_info(f"\n{'='*80}")
+            log_agent_info(f"Step {step + 1}/{self.config.max_steps}")
+            log_agent_info(f"{'='*80}")
             
             # 1. Get LLM response
             try:
@@ -150,7 +152,7 @@ class ReActAgent:
                     tools=self.tools
                 )
             except LLMError as e:
-                logger.error(f"LLM error: {e}")
+                log_agent_error("LLM error", error=e)
                 self.stats["errors"] += 1
                 
                 # Add error to conversation and retry
@@ -172,10 +174,10 @@ class ReActAgent:
             final_answer = response.get("content", "").strip()
             
             if not final_answer:
-                logger.warning("LLM returned empty response")
+                log_agent_error("LLM returned empty response")
                 continue
             
-            logger.info(f"\n✅ Final Answer:\n{final_answer}")
+            log_agent_info(f"\nFinal Answer:\n{final_answer}")
             return final_answer
         
         # Exceeded max steps
@@ -188,7 +190,7 @@ class ReActAgent:
         Args:
             tool_calls: List of tool calls from LLM
         """
-        logger.info(f"🔧 Executing {len(tool_calls)} tool call(s)")
+        log_agent_info(f"Executing {len(tool_calls)} tool call(s)")
         
         # Add assistant message with tool calls
         self.messages.append({
@@ -202,7 +204,7 @@ class ReActAgent:
             tool_name = tool_call["function"]["name"]
             arguments = tool_call["function"]["arguments"]
             
-            logger.info(f"  → {tool_name}({arguments})")
+            log_agent_debug(f"  -> {tool_name}({arguments})")
             
             # Execute with retry
             result = await self._execute_tool_with_retry(tool_name, arguments)
@@ -221,7 +223,7 @@ class ReActAgent:
             self.stats["tool_calls"][tool_name] = \
                 self.stats["tool_calls"].get(tool_name, 0) + 1
             
-            logger.info(f"  ← Result: {result[:200]}{'...' if len(result) > 200 else ''}")
+            log_agent_debug(f"  <- Result: {result[:200]}{'...' if len(result) > 200 else ''}")
     
     async def _execute_tool_with_retry(
         self,
@@ -248,40 +250,46 @@ class ReActAgent:
                 
             except ToolNotFoundError as e:
                 # Tool doesn't exist - don't retry
-                logger.error(f"Tool not found: {e}")
+                log_agent_error("Tool not found", error=e)
                 self.stats["errors"] += 1
-                return f"❌ ERROR: {str(e)}"
+                return f"ERROR: {str(e)}"
             
             except ToolTimeoutError as e:
-                # Timeout - retry with backoff
+                # Timeout - retry with exponential backoff and jitter
+                # (inspired by Source-Code/services/api/withRetry.ts)
                 last_error = e
                 
                 if attempt < self.config.max_retries - 1:
-                    delay = min(
-                        self.config.base_retry_delay * (2 ** attempt),
-                        self.config.max_retry_delay
+                    delay = get_retry_delay(
+                        attempt=attempt + 1,
+                        base_delay_ms=self.config.base_retry_delay_ms,
+                        max_delay_ms=self.config.max_retry_delay_ms,
+                        jitter_factor=self.config.retry_jitter_factor
                     )
-                    logger.warning(f"⚠️ Tool timeout, retrying in {delay}s... (attempt {attempt + 1}/{self.config.max_retries})")
+                    log_agent_error(
+                        f"Tool timeout, retrying in {delay:.2f}s... (attempt {attempt + 1}/{self.config.max_retries})",
+                        error=e
+                    )
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(f"❌ Tool timeout after {self.config.max_retries} attempts")
+                    log_agent_error(f"Tool timeout after {self.config.max_retries} attempts")
                     self.stats["errors"] += 1
-                    return f"❌ ERROR: Tool timed out after {self.config.max_retries} attempts"
+                    return f"ERROR: Tool timed out after {self.config.max_retries} attempts"
             
             except ToolExecutionError as e:
                 # Execution error - return to LLM
-                logger.error(f"Tool execution error: {e}")
+                log_agent_error("Tool execution error", error=e)
                 self.stats["errors"] += 1
-                return f"❌ ERROR: {str(e)}"
+                return f"ERROR: {str(e)}"
             
             except Exception as e:
                 # Unexpected error
-                logger.error(f"Unexpected error: {e}", exc_info=True)
+                log_agent_error("Unexpected error during tool execution", error=e)
                 self.stats["errors"] += 1
-                return f"❌ ERROR: Unexpected error: {str(e)}"
+                return f"ERROR: Unexpected error: {str(e)}"
         
         # All retries exhausted
-        return f"❌ ERROR: Max retries exceeded. Last error: {last_error}"
+        return f"ERROR: Max retries exceeded. Last error: {last_error}"
     
     def _truncate_if_needed(self, content: str) -> str:
         """
@@ -308,7 +316,7 @@ class ReActAgent:
             + content[-tail_size:]
         )
         
-        logger.debug(f"Truncated content from {len(content)} to {len(truncated)} chars")
+        log_agent_debug(f"Truncated content from {len(content)} to {len(truncated)} chars")
         
         return truncated
     
@@ -317,11 +325,11 @@ class ReActAgent:
         duration = self.stats["end_time"] - self.stats["start_time"]
         
         print(f"\n{'='*80}")
-        print("📊 Agent Statistics")
+        print("Agent Statistics")
         print(f"{'='*80}")
-        print(f"  Duration:     {duration:.2f}s")
-        print(f"  Total steps:  {self.stats['total_steps']}")
-        print(f"  Tool calls:   {sum(self.stats['tool_calls'].values())}")
+        print(f"Duration:     {duration:.2f}s")
+        print(f"Total steps:  {self.stats['total_steps']}")
+        print(f"Tool calls:   {sum(self.stats['tool_calls'].values())}")
         
         if self.stats['tool_calls']:
             print(f"\n  Tool usage:")

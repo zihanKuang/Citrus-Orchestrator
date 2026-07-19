@@ -1,8 +1,9 @@
 """
 MCP Client - Handles connection to MCP Server
+
+Inspired by Cluade-Code/services/mcp/client.ts
 """
 import asyncio
-import logging
 from typing import List, Dict, Any
 from contextlib import AsyncExitStack
 
@@ -10,9 +11,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from .exceptions import MCPConnectionError, ToolNotFoundError, ToolExecutionError
-
-
-logger = logging.getLogger(__name__)
+from .logging_utils import log_mcp_debug, log_mcp_error
 
 
 class MCPClient:
@@ -33,7 +32,7 @@ class MCPClient:
     async def connect(self):
         """Connect to MCP server"""
         try:
-            logger.info(f"Connecting to MCP server: {self.command} {' '.join(self.args)}")
+            log_mcp_debug(f"Connecting to MCP server: {self.command} {' '.join(self.args)}")
             
             server_params = StdioServerParameters(
                 command=self.command,
@@ -55,22 +54,22 @@ class MCPClient:
             # Initialize session
             await self.session.initialize()
             
-            logger.info("✅ Connected to MCP server")
+            log_mcp_debug("Connected to MCP server")
             
             # Fetch available tools
             await self._fetch_tools()
             
         except Exception as e:
-            logger.error(f"Failed to connect to MCP server: {e}")
-            raise MCPConnectionError(f"MCP connection failed: {e}")
+            log_mcp_error("Failed to connect to MCP server", error=e)
+            raise MCPConnectionError(f"MCP connection failed: {e}", original_error=e)
     
     async def disconnect(self):
         """Disconnect from MCP server"""
         try:
             await self.exit_stack.aclose()
-            logger.info("Disconnected from MCP server")
+            log_mcp_debug("Disconnected from MCP server")
         except Exception as e:
-            logger.warning(f"Error during disconnect: {e}")
+            log_mcp_error("Error during disconnect", error=e)
     
     async def _fetch_tools(self):
         """Fetch available tools from MCP server"""
@@ -84,12 +83,12 @@ class MCPClient:
                     "input_schema": tool.inputSchema
                 }
             
-            logger.info(f"Fetched {len(self._tools_cache)} tools from MCP server")
-            logger.debug(f"Available tools: {list(self._tools_cache.keys())}")
+            log_mcp_debug(f"Fetched {len(self._tools_cache)} tools from MCP server")
+            log_mcp_debug(f"Available tools: {list(self._tools_cache.keys())}")
             
         except Exception as e:
-            logger.error(f"Failed to fetch tools: {e}")
-            raise MCPConnectionError(f"Failed to fetch tools: {e}")
+            log_mcp_error("Failed to fetch tools", error=e)
+            raise MCPConnectionError(f"Failed to fetch tools: {e}", original_error=e)
     
     def get_tools(self) -> List[Dict[str, Any]]:
         """Get list of available tools in LLM function calling format"""
@@ -124,7 +123,7 @@ class MCPClient:
             raise ToolNotFoundError(f"Tool '{tool_name}' not found. Available: {list(self._tools_cache.keys())}")
         
         try:
-            logger.info(f"Calling tool: {tool_name} with args: {arguments}")
+            log_mcp_debug(f"Calling tool: {tool_name} with args: {arguments}")
             
             result = await self.session.call_tool(tool_name, arguments)
             
@@ -142,10 +141,10 @@ class MCPClient:
             else:
                 result_text = str(result)
             
-            logger.info(f"Tool result: {result_text[:200]}{'...' if len(result_text) > 200 else ''}")
+            log_mcp_debug(f"Tool result: {result_text[:200]}{'...' if len(result_text) > 200 else ''}")
             
             return result_text
             
         except Exception as e:
-            logger.error(f"Tool execution failed: {e}")
-            raise ToolExecutionError(f"Tool '{tool_name}' execution failed: {e}")
+            log_mcp_error(f"Tool execution failed: {tool_name}", error=e)
+            raise ToolExecutionError(f"Tool '{tool_name}' execution failed: {e}", original_error=e)
