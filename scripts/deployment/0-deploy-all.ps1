@@ -20,6 +20,7 @@ Write-Host "This will deploy:" -ForegroundColor White
 Write-Host "  1. Prometheus + Grafana (Monitoring)" -ForegroundColor Gray
 Write-Host "  2. Jaeger (Distributed Tracing)" -ForegroundColor Gray
 Write-Host "  3. OpenTelemetry Demo (17 microservices)" -ForegroundColor Gray
+Write-Host "  4. (Optional later) Chaos Mesh for SRE demos — see infra/chaos/" -ForegroundColor Gray
 Write-Host ""
 
 # Confirm
