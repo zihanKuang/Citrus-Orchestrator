@@ -15,7 +15,6 @@ scripts/
 ├── canary-deploy.py               # Automated canary deployment
 ├── canary-demo.py                 # Canary deployment demo
 ├── canary-wrapper.sh              # Bash wrapper with mock support
-├── aiops-agent.py                 # AI-powered incident analysis
 ├── requirements.txt               # Python dependencies
 └── tests/                         # BATS test suite
 ```
@@ -44,16 +43,19 @@ python canary-deploy.py \
   --canary ghcr.io/user/app:v1.1
 ```
 
-### AIOps: Incident Analysis
+### AIOps: Agent CLI (MCP + ReAct)
 
-```bash
-# Start webhook server
-python aiops-agent.py --mode server --port 5000
+The old Flask `aiops-agent.py` was replaced by:
 
-# Analyze single alert
-python aiops-agent.py --mode analyze --alert-file alert.json
+- `components/mcp-server/` — MCP tools (logs, events, Prometheus, validate_recovery)
+- `components/agent_cli/` — hand-written ReAct agent
+
+```powershell
+cd components
+python -m agent_cli "What is wrong with frontend in citrus?"
 ```
 
+Chaos demo: `.\infra\chaos\run-demo.ps1`
 ## Script Categories
 
 ### 1. Deployment Scripts (New)
@@ -103,28 +105,9 @@ python canary-deploy.py \
   --duration 300
 ```
 
-### 3. AIOps Scripts
+### 3. AIOps (moved to components/)
 
-**Purpose:** AI-powered incident analysis and response
-
-**Files:**
-- `aiops-agent.py` (398 lines) - Incident analysis agent
-
-**Key Features:**
-- Webhook server for Alertmanager
-- Root cause analysis
-- Remediation suggestions
-- Prevention recommendations
-
-**Integration:**
-
-```yaml
-# Alertmanager config
-receivers:
-  - name: 'aiops-agent'
-    webhook_configs:
-      - url: 'http://localhost:5000/webhook'
-```
+Incident analysis now lives in `components/mcp-server` + `components/agent_cli` (MCP + ReAct), not under `scripts/`.
 
 ## Prerequisites
 
@@ -135,13 +118,12 @@ receivers:
 - Helm 3.12+
 - PowerShell 5.1+ or PowerShell Core
 
-### For MLOps/AIOps Scripts
+### For MLOps Scripts
 
 - Python 3.12+
 - kubectl access
 - Prometheus port-forward on 9090
 - Dependencies: `pip install -r requirements.txt`
-
 ## Testing
 
 ### Deployment Scripts

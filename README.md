@@ -152,9 +152,10 @@ python scripts/canary-deploy.py \
   --baseline ghcr.io/zihankuang/citrus-recommendation:v1.0 \
   --canary ghcr.io/zihankuang/citrus-recommendation:v1.1
 
-# AI-powered incident analysis
+# AI-powered incident analysis (MCP + ReAct Agent)
 export GEMINI_API_KEY="your-key"
-python scripts/aiops-agent.py --mode server --port 5000
+cd components
+python -m agent_cli "What is wrong in the citrus namespace?"
 ```
 
 ### Access Services
@@ -191,8 +192,14 @@ Citrus-Orchestrator/
 │           └── _helpers.tpl
 ├── scripts/
 │   ├── canary-deploy.py       # MLOps automation
-│   ├── aiops-agent.py         # AI incident analysis
 │   └── requirements.txt
+├── components/
+│   ├── mcp-server/            # MCP K8s/Prometheus tools
+│   └── agent_cli/             # Hand-written ReAct agent
+├── infra/
+│   ├── chaos/                 # Chaos Mesh demos
+│   ├── rbac/
+│   └── manifests/
 ├── src/                       # 10 microservices
 │   ├── frontend/Dockerfile    # Optimized multi-stage
 │   ├── recommendationservice/Dockerfile
@@ -393,7 +400,7 @@ All operational infrastructure and automation:
 - Optimized Dockerfiles with multi-stage builds (`src/*/Dockerfile`)
 - CI/CD pipeline (`.github/workflows/`)
 - MLOps automation scripts (`scripts/canary-deploy.py`)
-- AIOps incident analysis (`scripts/aiops-agent.py`)
+- AIOps via MCP + ReAct agent (`components/mcp-server`, `components/agent_cli`)
 - Observability configuration (Prometheus, Grafana, Jaeger)
 - SLI/SLO dashboard (`deploy/grafana/`)
 - Complete troubleshooting documentation
