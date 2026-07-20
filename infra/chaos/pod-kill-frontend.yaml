@@ -1,0 +1,29 @@
+# =============================================================================
+# Chaos Experiment: Kill one frontend pod (one-shot)
+# =============================================================================
+# Purpose: Simulate unexpected pod termination against the otel-demo frontend.
+# Recovery: Kubernetes ReplicaSet recreates the pod (infra self-heal).
+# Agent role: Diagnose via MCP tools, then validate_recovery (read-only).
+#
+# Prerequisites: Chaos Mesh installed (see install-chaos-mesh.ps1)
+# Apply:  kubectl apply -f infra/chaos/pod-kill-frontend.yaml
+# Watch:  kubectl get pods -n citrus -l app.kubernetes.io/component=frontend -w
+# Delete: kubectl delete -f infra/chaos/pod-kill-frontend.yaml
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kill-otel-frontend
+  namespace: citrus
+  labels:
+    app: citrus-chaos
+    experiment: pod-kill-frontend
+spec:
+  action: pod-kill
+  mode: one
+  duration: "60s"
+  selector:
+    namespaces:
+      - citrus
+    labelSelectors:
+      "app.kubernetes.io/component": "frontend"
