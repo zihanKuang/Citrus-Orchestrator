@@ -107,6 +107,135 @@ class KubernetesTools:
         )
         return result.stdout.strip() if result.stdout else ""
     
+    async def list_pods(self) -> str:
+        """
+        List all pods in the namespace with phase, readiness, restarts, and key labels.
+
+        Returns:
+            Human-readable pod inventory (useful as the first step in incident triage)
+        """
+        try:
+            if self.use_kubectl:
+                output = self._kubectl('get', 'pods', '-o', 'json')
+                data = json.loads(output)
+            else:
+                pods = self.v1.list_namespaced_pod(namespace=self.namespace)
+                data = {'items': [pod.to_dict() for pod in pods.items]}
+
+            items = data.get('items', [])
+            if not items:
+                return f"No pods found in namespace '{self.namespace}'"
+
+            lines = [
+                f"Pods in namespace '{self.namespace}' ({len(items)} total):",
+                "",
+            ]
+            for pod in items:
+                name = pod['metadata']['name']
+                phase = pod.get('status', {}).get('phase', 'Unknown')
+                labels = pod.get('metadata', {}).get('labels') or {}
+                component = (
+                    labels.get('app.kubernetes.io/component')
+                    or labels.get('app')
+                    or labels.get('app.kubernetes.io/name')
+                    or 'n/a'
+                )
+                container_statuses = pod.get('status', {}).get('container_statuses') or []
+                restarts = sum(c.get('restart_count', 0) or 0 for c in container_statuses)
+                ready = (
+                    all(c.get('ready', False) for c in container_statuses)
+                    if container_statuses else False
+                )
+                lines.append(
+                    f"- {name} | phase={phase} | ready={ready} | "
+                    f"restarts={restarts} | component={component}"
+                )
+
+            return "\n".join(lines)
+
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr if e.stderr else str(e)
+            return f"Error listing pods: {error_msg}"
+        except Exception as e:
+            return f"Unexpected error: {str(e)}"
+
+    async def validate_recovery(
+        self,
+        pod_selector: str,
+        min_ready: int = 1,
+    ) -> str:
+        """
+        Validate that pods matching a selector have recovered after disruption.
+
+        Checks phase=Running, all containers Ready, and reports restart counts.
+        Does NOT mutate the cluster (read-only closed-loop verification).
+
+        Args:
+            pod_selector: Kubernetes label selector
+            min_ready: Minimum number of Ready pods required to PASS
+
+        Returns:
+            PASS/FAIL report with per-pod details
+        """
+        try:
+            if self.use_kubectl:
+                output = self._kubectl('get', 'pods', '-l', pod_selector, '-o', 'json')
+                data = json.loads(output)
+            else:
+                label_dict = dict(
+                    item.split('=', 1) for item in pod_selector.split(',') if '=' in item
+                )
+                label_selector_str = ','.join(f"{k}={v}" for k, v in label_dict.items())
+                pods = self.v1.list_namespaced_pod(
+                    namespace=self.namespace,
+                    label_selector=label_selector_str,
+                )
+                data = {'items': [pod.to_dict() for pod in pods.items]}
+
+            items = data.get('items', [])
+            if not items:
+                return (
+                    f"FAIL: No pods found matching '{pod_selector}' in "
+                    f"namespace '{self.namespace}'. Service may still be down."
+                )
+
+            ready_count = 0
+            details = []
+            for pod in items:
+                name = pod['metadata']['name']
+                phase = pod.get('status', {}).get('phase', 'Unknown')
+                container_statuses = pod.get('status', {}).get('container_statuses') or []
+                restarts = sum(c.get('restart_count', 0) or 0 for c in container_statuses)
+                is_ready = (
+                    phase == 'Running'
+                    and bool(container_statuses)
+                    and all(c.get('ready', False) for c in container_statuses)
+                )
+                if is_ready:
+                    ready_count += 1
+
+                details.append(
+                    f"- {name}: phase={phase}, ready={is_ready}, restarts={restarts}"
+                )
+
+            passed = ready_count >= min_ready
+            verdict = "PASS" if passed else "FAIL"
+            summary = (
+                f"{verdict}: {ready_count}/{len(items)} Ready pods "
+                f"(required min_ready={min_ready}) for selector '{pod_selector}'"
+            )
+            note = (
+                "\nNote: Elevated restart counts after a chaos kill are expected; "
+                "PASS means ReplicaSet self-heal restored Ready capacity."
+            )
+            return summary + "\n" + "\n".join(details) + note
+
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr if e.stderr else str(e)
+            return f"FAIL: Error validating recovery: {error_msg}"
+        except Exception as e:
+            return f"FAIL: Unexpected error: {str(e)}"
+
     async def get_pod_logs(self, pod_selector: str, lines: int = 50) -> str:
         """
         Get recent logs from pods matching a label selector.
@@ -136,7 +265,9 @@ class KubernetesTools:
             # Use Kubernetes Python client (in-cluster)
             else:
                 # Parse label selector (e.g., "app=frontend" -> {"app": "frontend"})
-                label_dict = dict(item.split('=') for item in pod_selector.split(','))
+                label_dict = dict(
+                    item.split('=', 1) for item in pod_selector.split(',') if '=' in item
+                )
                 label_selector_str = ','.join(f"{k}={v}" for k, v in label_dict.items())
                 
                 # List pods matching selector
@@ -195,7 +326,9 @@ class KubernetesTools:
             
             # Use Kubernetes Python client (in-cluster)
             else:
-                label_dict = dict(item.split('=') for item in pod_selector.split(','))
+                label_dict = dict(
+                    item.split('=', 1) for item in pod_selector.split(',') if '=' in item
+                )
                 label_selector_str = ','.join(f"{k}={v}" for k, v in label_dict.items())
                 
                 pods = self.v1.list_namespaced_pod(
