@@ -36,6 +36,21 @@ async def list_tools() -> list[Tool]:
     
     return [
         Tool(
+            name="list_pods",
+            description=(
+                "List all pods in the citrus namespace with phase, readiness, "
+                "restart counts, and component labels. "
+                "Use this first during incident triage to discover which workloads exist "
+                "and which look unhealthy. Namespace is fixed to citrus."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+
+        Tool(
             name="get_pod_logs",
             description=(
                 "Retrieve recent logs from pods in the citrus namespace matching a label selector. "
@@ -47,7 +62,10 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "pod_selector": {
                         "type": "string",
-                        "description": "Kubernetes label selector (e.g., 'app=frontend')"
+                        "description": (
+                            "Kubernetes label selector "
+                            "(e.g., 'app.kubernetes.io/component=frontend')"
+                        )
                     },
                     "lines": {
                         "type": "integer",
@@ -73,7 +91,10 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "pod_selector": {
                         "type": "string",
-                        "description": "Kubernetes label selector (e.g., 'app=accounting')"
+                        "description": (
+                            "Kubernetes label selector "
+                            "(e.g., 'app.kubernetes.io/component=frontend')"
+                        )
                     }
                 },
                 "required": ["pod_selector"]
@@ -84,7 +105,8 @@ async def list_tools() -> list[Tool]:
             name="get_recent_events",
             description=(
                 "Get recent Kubernetes events from the citrus namespace. "
-                "Shows timestamp, type, reason, and message."
+                "Shows timestamp, type, reason, and message. "
+                "Look for Killing, Started, Pulled, BackOff, Unhealthy after chaos experiments."
             ),
             inputSchema={
                 "type": "object",
@@ -122,6 +144,36 @@ async def list_tools() -> list[Tool]:
                 "required": ["promql"]
             }
         ),
+
+        Tool(
+            name="validate_recovery",
+            description=(
+                "Closed-loop verification after an incident or chaos experiment. "
+                "Checks that pods matching a selector are Running and Ready "
+                "(ReplicaSet self-heal). Returns PASS or FAIL. "
+                "Always call this before declaring an incident resolved. "
+                "This tool is read-only and cannot mutate the cluster."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pod_selector": {
+                        "type": "string",
+                        "description": (
+                            "Kubernetes label selector "
+                            "(e.g., 'app.kubernetes.io/component=frontend')"
+                        )
+                    },
+                    "min_ready": {
+                        "type": "integer",
+                        "description": "Minimum Ready pods required to PASS",
+                        "default": 1,
+                        "minimum": 1
+                    }
+                },
+                "required": ["pod_selector"]
+            }
+        ),
     ]
 
 
@@ -140,7 +192,10 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
     logger.info(f"Tool called: {name} with arguments: {arguments}")
     
     try:
-        if name == "get_pod_logs":
+        if name == "list_pods":
+            result = await k8s_tools.list_pods()
+
+        elif name == "get_pod_logs":
             result = await k8s_tools.get_pod_logs(
                 pod_selector=arguments["pod_selector"],
                 lines=arguments.get("lines", 50)
@@ -160,6 +215,12 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             result = await k8s_tools.query_prometheus(
                 promql=arguments["promql"],
                 prometheus_url=arguments.get("prometheus_url", "http://localhost:9090")
+            )
+
+        elif name == "validate_recovery":
+            result = await k8s_tools.validate_recovery(
+                pod_selector=arguments["pod_selector"],
+                min_ready=arguments.get("min_ready", 1),
             )
         
         else:
