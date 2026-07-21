@@ -1,7 +1,8 @@
 """
 LLM Client - Handles calls to Language Model APIs
 
-Supports Gemini with function calling for the ReAct loop.
+Protocol adapter only: OpenAI-style messages <-> Gemini function calling.
+Domain system prompts are injected by the caller (ReActAgent / AgentConfig).
 """
 from __future__ import annotations
 
@@ -19,32 +20,20 @@ def _import_genai():
     return genai
 
 
-SRE_SYSTEM_INSTRUCTION = (
-    "You are an SRE diagnostic agent for the citrus Kubernetes namespace "
-    "(OpenTelemetry Demo + monitoring stack).\n"
-    "Rules:\n"
-    "1. Always gather live evidence with tools before answering; never invent cluster state.\n"
-    "2. Namespace is fixed to citrus — do not ask the user about namespaces.\n"
-    "3. Preferred incident workflow:\n"
-    "   list_pods → get_recent_events → get_pod_status → get_pod_logs → "
-    "validate_recovery (and query_prometheus if useful).\n"
-    "4. For otel-demo workloads prefer label selectors like "
-    "'app.kubernetes.io/component=frontend'.\n"
-    "5. Before declaring an incident resolved, call validate_recovery and report PASS/FAIL.\n"
-    "6. You are read-only: you cannot delete/restart pods. Recovery after chaos "
-    "comes from Kubernetes ReplicaSet self-heal; your job is RCA + verification.\n"
-    "7. Structure final answers as: What happened → Evidence → Current status → "
-    "Recovery validation."
-)
-
-
 class LLMClient:
     """Client for interacting with Language Models"""
 
-    def __init__(self, provider: str, model_name: str, api_key: str):
+    def __init__(
+        self,
+        provider: str,
+        model_name: str,
+        api_key: str,
+        system_instruction: str = "",
+    ):
         self.provider = provider
         self.model_name = model_name
         self.api_key = api_key
+        self.system_instruction = system_instruction
         self._tools: Optional[List[Any]] = None
         self.model = None
 
@@ -53,12 +42,21 @@ class LLMClient:
         # Defer Gemini client setup until first generate call
         # so MCP-only / fake-LLM tests can construct ReActAgent without a key.
 
-    def _setup_gemini(self):
-        if self.model is not None:
-            return
+    def _ensure_model_with_tools(self, tools: List[Dict[str, Any]]):
+        """Create or recreate model when tool set changes."""
         if not self.api_key:
             raise LLMError("GEMINI_API_KEY is not set")
+
         genai = _import_genai()
+        gemini_tools = self._convert_tools_to_gemini(tools) if tools else None
+        tool_key = tuple(sorted(t["function"]["name"] for t in tools)) if tools else ()
+        if (
+            self.model is not None
+            and getattr(self, "_tool_key", None) == tool_key
+            and self._tools is not None
+        ):
+            return
+
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel(
             model_name=self.model_name,
@@ -67,32 +65,14 @@ class LLMClient:
                 "top_p": 0.95,
                 "max_output_tokens": 8192,
             },
-            system_instruction=SRE_SYSTEM_INSTRUCTION,
-        )
-        log_llm_debug(f"Initialized Gemini model: {self.model_name}")
-
-    def _ensure_model_with_tools(self, tools: List[Dict[str, Any]]):
-        """Recreate model with tool declarations when tool set changes."""
-        self._setup_gemini()
-        genai = _import_genai()
-        gemini_tools = self._convert_tools_to_gemini(tools) if tools else None
-        tool_key = tuple(sorted(t["function"]["name"] for t in tools)) if tools else ()
-        if getattr(self, "_tool_key", None) == tool_key and self._tools is not None:
-            return
-
-        self.model = genai.GenerativeModel(
-            model_name=self.model_name,
-            generation_config={
-                "temperature": 0.2,
-                "top_p": 0.95,
-                "max_output_tokens": 8192,
-            },
             tools=gemini_tools,
-            system_instruction=SRE_SYSTEM_INSTRUCTION,
+            system_instruction=self.system_instruction or None,
         )
         self._tools = gemini_tools
         self._tool_key = tool_key
-        log_llm_debug(f"Gemini model configured with {len(tools)} tools")
+        log_llm_debug(
+            f"Gemini model configured: {self.model_name} with {len(tools)} tools"
+        )
 
     async def generate_with_tools(
         self,
@@ -271,10 +251,6 @@ class LLMClient:
             kwargs["enum"] = [str(v) for v in schema["enum"]]
 
         return genai.protos.Schema(**kwargs)
-
-    def _sanitize_schema(self, schema: Dict[str, Any]) -> Dict[str, Any]:
-        """Deprecated helper kept for compatibility; use _to_gemini_schema."""
-        return schema
 
     def _parse_gemini_response(self, response) -> Dict[str, Any]:
         """Parse Gemini response into OpenAI-style tool_calls format."""
