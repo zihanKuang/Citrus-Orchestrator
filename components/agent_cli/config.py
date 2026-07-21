@@ -9,6 +9,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
+from .prompts import DEFAULT_SRE_SYSTEM_INSTRUCTION
+
 # Load .env from this package directory (if present)
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _PACKAGE_DIR.parent.parent
@@ -31,11 +33,13 @@ class AgentConfig:
     llm_provider: str = "gemini"
     model_name: str = "gemini-2.5-flash"
     api_key: Optional[str] = None
+    system_instruction: str = DEFAULT_SRE_SYSTEM_INSTRUCTION
 
     # MCP settings
     mcp_server_command: str = field(default_factory=lambda: sys.executable)
     mcp_server_args: list[str] = field(default_factory=_default_mcp_server_args)
     mcp_server_cwd: Optional[str] = None
+    tool_timeout_seconds: float = 60.0
 
     # Agent settings
     max_steps: int = 10
@@ -59,6 +63,14 @@ class AgentConfig:
 
         if self.mcp_server_cwd is None:
             self.mcp_server_cwd = str(_MCP_SERVER_DIR)
+
+        env_timeout = os.getenv("TOOL_TIMEOUT_SECONDS")
+        if env_timeout:
+            self.tool_timeout_seconds = float(env_timeout)
+
+        env_prompt = os.getenv("AGENT_SYSTEM_INSTRUCTION")
+        if env_prompt:
+            self.system_instruction = env_prompt
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
