@@ -47,31 +47,36 @@ class ReActAgent:
             command=config.mcp_server_command,
             args=config.mcp_server_args,
             cwd=config.mcp_server_cwd,
+            timeout_seconds=config.tool_timeout_seconds,
         )
         self.llm_client = LLMClient(
             provider=config.llm_provider,
             model_name=config.model_name,
-            api_key=config.api_key
+            api_key=config.api_key,
+            system_instruction=config.system_instruction,
         )
         
         # State
         self.messages: List[Dict[str, Any]] = []
         self.tools: List[Dict[str, Any]] = []
         
-        # Statistics
-        self.stats = {
-            "total_steps": 0,
-            "tool_calls": {},
-            "errors": 0,
-            "start_time": None,
-            "end_time": None,
-            "tokens_used": 0
-        }
+        # Statistics (reset at the start of each run())
+        self.stats = self._empty_stats()
         
         # Setup logging
         self._setup_logging()
         
         log_agent_info("Agent initialized")
+
+    @staticmethod
+    def _empty_stats() -> Dict[str, Any]:
+        return {
+            "total_steps": 0,
+            "tool_calls": {},
+            "errors": 0,
+            "start_time": None,
+            "end_time": None,
+        }
     
     def _setup_logging(self):
         """Setup logging configuration"""
@@ -115,6 +120,8 @@ class ReActAgent:
         Returns:
             Final answer from agent
         """
+        # Reset per-query so interactive mode does not accumulate stale stats
+        self.stats = self._empty_stats()
         self.stats["start_time"] = time.time()
         
         # Initialize conversation
@@ -157,16 +164,11 @@ class ReActAgent:
                 log_agent_error("LLM error", error=e)
                 self.stats["errors"] += 1
 
-                # Don't burn the whole budget on repeated identical API failures
+                # Don't burn the whole budget on repeated identical API failures.
+                # Do not append fake assistant turns — that pollutes model context.
                 if self.stats["errors"] >= 2:
-                    return (
-                        f"Agent stopped after repeated LLM errors: {e}"
-                    )
-
-                self.messages.append({
-                    "role": "assistant",
-                    "content": f"Error calling LLM: {e}. Retrying..."
-                })
+                    return f"Agent stopped after repeated LLM errors: {e}"
+                await asyncio.sleep(0.5)
                 continue
             
             # 2. Check if LLM wants to call tools
