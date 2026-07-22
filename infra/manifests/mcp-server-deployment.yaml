@@ -1,11 +1,10 @@
-# =============================================================================
-# MCP Server Deployment
-# =============================================================================
-# Features:
-# - ServiceAccount with RBAC restrictions
-# - Distroless container (no shell)
-# - Resource limits and health checks
-# - Security hardening (readOnlyRootFilesystem, non-root user)
+# MCP Server Deployment (RBAC / packaging demo)
+# Purpose:
+#   Prove least-privilege in-cluster identity (ServiceAccount + Role) and that
+#   the container image runs as non-root. This Pod is NOT the transport used by
+#   components/agent_cli — the CLI spawns MCP over local stdio with kubeconfig.
+#
+# Image: python:3.12-slim based (see components/mcp-server/Dockerfile)
 # =============================================================================
 
 apiVersion: apps/v1
@@ -16,44 +15,40 @@ metadata:
   labels:
     app: mcp-server
     component: ai-agent
-    version: v1
+    version: v3
 spec:
   replicas: 1
-  
+
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
-  
+
   selector:
     matchLabels:
       app: mcp-server
-  
+
   template:
     metadata:
       labels:
         app: mcp-server
         component: ai-agent
-        version: v1
+        version: v3
       annotations:
         prometheus.io/scrape: "false"
         seccomp.security.alpha.kubernetes.io/pod: runtime/default
-    
+
     spec:
-      # Security: Use custom ServiceAccount (not default)
-      # Token auto-injected at /var/run/secrets/kubernetes.io/serviceaccount/token
       serviceAccountName: mcp-server-sa
       automountServiceAccountToken: true
-      
+
       containers:
         - name: mcp-server
-          # Build locally: docker build -t mcp-server:v3 .
-          # Load to cluster: kind load docker-image mcp-server:v3
+          # Build: docker build -t mcp-server:v3 ./components/mcp-server
           image: mcp-server:v3
           imagePullPolicy: IfNotPresent
-          
-          # Resource limits
+
           resources:
             requests:
               cpu: 100m
@@ -61,30 +56,30 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-          
-          # Liveness probe: restart if unhealthy
+
+          # Process-level checks (not "file exists")
           livenessProbe:
             exec:
               command:
-                - cat
-                - /app/server.py
-            initialDelaySeconds: 10
+                - python3
+                - -c
+                - import tools; import sys; sys.exit(0)
+            initialDelaySeconds: 15
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
-          
-          # Readiness probe: mark ready when healthy
+
           readinessProbe:
             exec:
               command:
-                - cat
-                - /app/server.py
+                - python3
+                - -c
+                - import tools; import sys; sys.exit(0)
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
-          
-          # Environment variables
+
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
@@ -92,47 +87,40 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-          
-          # Security context: container-level hardening
+            - name: KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # In-cluster Prometheus Service (kube-prometheus-stack)
+            - name: PROMETHEUS_URL
+              value: "http://monitoring-kube-prometheus-prometheus:9090"
+
           securityContext:
             runAsNonRoot: true
-            runAsUser: 65532  # distroless nonroot user
+            runAsUser: 65532
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
-      
-      # Security context: pod-level settings
+
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
         fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
-      
+
       restartPolicy: Always
       dnsPolicy: ClusterFirst
 
 # =============================================================================
-# Deployment Commands
-# =============================================================================
-# 1. Build and load image:
-# cd components/mcp-server
-# docker build -t mcp-server:v1 .
-# kind load docker-image mcp-server:v1  # for kind
+# Deploy:
+#   kubectl apply -f infra/rbac/mcp-server-rbac.yaml
+#   kubectl apply -f infra/manifests/mcp-server-deployment.yaml
+#   kubectl apply -f infra/manifests/rbac-test-pod.yaml   # optional 403 demo
 #
-# 2. Apply RBAC (if not done):
-# kubectl apply -f infra/rbac/mcp-server-rbac.yaml
-#
-# 3. Deploy:
-# kubectl apply -f infra/manifests/mcp-server-deployment.yaml
-#
-# 4. Verify:
-# kubectl get pods -n citrus -l app=mcp-server
-# kubectl logs -n citrus -l app=mcp-server --tail=50
-#
-# 5. Test RBAC:
-# kubectl cp components/mcp-server/test-rbac.py citrus/<pod>:/tmp/
-# kubectl exec -n citrus <pod> -- python3 /tmp/test-rbac.py
+# Diagnose (local Agent, not this Pod):
+#   cd components
+#   python -m agent_cli "What happened to frontend?"
 # =============================================================================
