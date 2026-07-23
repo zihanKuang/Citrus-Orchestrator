@@ -1,6 +1,7 @@
 """
 MCP Client - Handles connection to MCP Server
 """
+import asyncio
 from typing import List, Dict, Any, Optional
 from contextlib import AsyncExitStack
 import os
@@ -8,7 +9,12 @@ import os
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from .exceptions import MCPConnectionError, ToolNotFoundError, ToolExecutionError
+from .exceptions import (
+    MCPConnectionError,
+    ToolNotFoundError,
+    ToolExecutionError,
+    ToolTimeoutError,
+)
 from .logging_utils import log_mcp_debug, log_mcp_error
 
 
@@ -21,11 +27,13 @@ class MCPClient:
         args: List[str],
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        timeout_seconds: float = 60.0,
     ):
         self.command = command
         self.args = args
         self.cwd = cwd
         self.env = env
+        self.timeout_seconds = timeout_seconds
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         self._tools_cache: Dict[str, Dict] = {}
@@ -130,7 +138,10 @@ class MCPClient:
 
         try:
             log_mcp_debug(f"Calling tool: {tool_name} with args: {arguments}")
-            result = await self.session.call_tool(tool_name, arguments)
+            result = await asyncio.wait_for(
+                self.session.call_tool(tool_name, arguments),
+                timeout=self.timeout_seconds,
+            )
 
             if hasattr(result, "content") and result.content:
                 content_parts = []
@@ -149,7 +160,18 @@ class MCPClient:
             )
             return result_text
 
+        except asyncio.TimeoutError as e:
+            log_mcp_error(
+                f"Tool timed out after {self.timeout_seconds}s: {tool_name}",
+                error=e,
+            )
+            raise ToolTimeoutError(
+                f"Tool '{tool_name}' timed out after {self.timeout_seconds}s",
+                original_error=e,
+            )
         except ToolNotFoundError:
+            raise
+        except ToolTimeoutError:
             raise
         except Exception as e:
             log_mcp_error(f"Tool execution failed: {tool_name}", error=e)
