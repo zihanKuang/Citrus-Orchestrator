@@ -1,8 +1,4 @@
-"""
-ReAct Agent CLI Package
-
-Architecture inspired by Claude Code patterns
-"""
+"""Agent CLI package."""
 
 from .exceptions import (
     AgentException,
@@ -33,7 +29,7 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    """Lazy imports so importing config does not pull Gemini SDK."""
+    # lazy imports so `import config` does not pull Gemini
     if name == "ReActAgent":
         from .agent import ReActAgent
         return ReActAgent

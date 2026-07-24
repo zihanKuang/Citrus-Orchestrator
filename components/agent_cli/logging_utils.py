@@ -1,12 +1,7 @@
-﻿"""
-Logging utilities
-
-Inspired by Cluade-Code's specialized logging functions
-"""
+﻿"""Named loggers for mcp / llm / agent."""
 import logging
 
 
-# Create specialized loggers
 mcp_logger = logging.getLogger("agent_cli.mcp")
 llm_logger = logging.getLogger("agent_cli.llm")
 agent_logger = logging.getLogger("agent_cli.agent")

@@ -1,8 +1,4 @@
-"""
-Domain prompts / system instructions for the Agent.
-
-Kept separate from LLMClient so the protocol adapter stays provider-agnostic.
-"""
+"""System prompts for the agent (kept out of LLMClient)."""
 
 DEFAULT_SRE_SYSTEM_INSTRUCTION = (
     "You are an SRE diagnostic agent for the citrus Kubernetes namespace "

@@ -1,13 +1,4 @@
-"""
-Kubernetes Operations Tools
-
-Wraps kubectl / Kubernetes API for MCP protocol.
-Each method corresponds to one MCP tool that AI can invoke.
-
-Deployment Modes:
-- Local Development: Uses kubectl with ~/.kube/config
-- In-Cluster: Uses Kubernetes Python client with ServiceAccount token
-"""
+"""kubectl / Kubernetes API helpers used by MCP tools."""
 
 from __future__ import annotations
 

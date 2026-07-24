@@ -1,8 +1,7 @@
 """
-LLM Client - Handles calls to Language Model APIs
+LLM client (Gemini function calling).
 
-Protocol adapter only: OpenAI-style messages <-> Gemini function calling.
-Domain system prompts are injected by the caller (ReActAgent / AgentConfig).
+Protocol adapter only — system prompts come from AgentConfig / prompts.py.
 """
 from __future__ import annotations
 
