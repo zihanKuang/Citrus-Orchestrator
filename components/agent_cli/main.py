@@ -49,6 +49,12 @@ async def main():
         action="store_true",
         help="Verbose output (DEBUG level)"
     )
+
+    parser.add_argument(
+        "--mcp-url",
+        default=None,
+        help="Streamable HTTP MCP endpoint (default: local stdio)",
+    )
     
     args = parser.parse_args()
     
@@ -56,7 +62,8 @@ async def main():
     config = AgentConfig(
         model_name=args.model,
         max_steps=args.max_steps,
-        log_level="DEBUG" if args.verbose else "INFO"
+        log_level="DEBUG" if args.verbose else "INFO",
+        mcp_url=args.mcp_url,
     )
     
     # Validate API key
