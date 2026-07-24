@@ -1,0 +1,20 @@
+# Only same-namespace pods can reach mcp-server:8080 (no Ingress).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-server-allow-same-namespace
+  namespace: citrus
+  labels:
+    app: mcp-server
+spec:
+  podSelector:
+    matchLabels:
+      app: mcp-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
