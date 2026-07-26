@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
 """
-MCP Server for Kubernetes Operations
+MCP server for Kubernetes ops tools.
 
-Exposes Kubernetes inspection tools via Model Context Protocol (MCP).
-AI clients can discover and invoke these tools automatically.
-
-Transport notes:
-- Local Agent CLI connects via stdio (spawns this process as a child).
-- The in-cluster Deployment is primarily an RBAC / packaging demo; it is not
-  the stdio endpoint used by agent_cli. Use local kubeconfig for diagnosis.
+Transports: stdio (local Agent child) or streamable-http (in-cluster Service).
 """
 
 import asyncio
@@ -230,10 +224,8 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
         return [TextContent(type="text", text=f"Tool execution failed: {str(e)}")]
 
 
-async def main():
-    """Start the MCP server with stdio transport."""
+async def run_stdio() -> None:
     logger.info("Starting MCP server on stdio...")
-
     try:
         async with stdio_server() as (read_stream, write_stream):
             logger.info("Server ready. Waiting for client connection...")
@@ -245,18 +237,39 @@ async def main():
     except Exception as e:
         logger.warning(f"stdio_server closed: {e}")
 
-    # In-cluster Deployment: stdin closes immediately; keep process alive so
-    # the Pod stays Running for RBAC demos. Agent CLI does NOT use this path —
-    # it spawns a local stdio child against the same codebase + kubeconfig.
-    if os.getenv("KUBERNETES_SERVICE_HOST"):
-        logger.info(
-            "In-cluster mode: keeping process alive after stdio closed "
-            "(RBAC demo pod; diagnosis runs via local agent_cli + kubeconfig)"
-        )
-        try:
+
+async def run_http(host: str, port: int) -> None:
+    from http_transport import run_streamable_http
+
+    logger.info(f"Starting MCP server on http://{host}:{port}/mcp")
+    await run_streamable_http(server, host=host, port=port)
+
+
+def _parse_args():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Citrus MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default=os.getenv("MCP_TRANSPORT", "stdio"),
+        help="stdio for local child process; streamable-http for K8s Service",
+    )
+    parser.add_argument("--host", default=os.getenv("MCP_HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("MCP_PORT", "8080")))
+    return parser.parse_args()
+
+
+async def main():
+    args = _parse_args()
+    if args.transport == "stdio":
+        await run_stdio()
+        # Keep the container alive if someone still runs stdio in-cluster
+        if os.getenv("KUBERNETES_SERVICE_HOST"):
+            logger.info("In-cluster + stdio: idling (prefer streamable-http)")
             await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            logger.info("Server shutdown requested")
+    else:
+        await run_http(args.host, args.port)
 
 
 if __name__ == "__main__":
