@@ -6,16 +6,6 @@ Production-grade microservices platform with automated MLOps and AI-powered oper
 [![Helm](https://img.shields.io/badge/helm-3.12-blue.svg)](https://helm.sh/)
 [![Azure AKS](https://img.shields.io/badge/azure-AKS%20Standard-blue.svg)](https://azure.microsoft.com/en-us/products/kubernetes-service/)
 
-**Project Highlights:**
-
-- 10-service microservices platform deployed on Azure AKS with under 10 minute deployment time
-- Automated canary deployment with intelligent rollback based on real-time SLO metrics
-- AI-powered incident analysis using Google Gemini
-- 80% Docker image size reduction through multi-stage builds
-- Migrated from GKE to AKS, solving RBAC and networking compatibility issues
-
----
-
 ## Overview
 
 This project demonstrates production-grade DevOps engineering through a complete microservices deployment pipeline. The platform uses Google's microservices-demo application as the base workload, with all infrastructure, automation, and operational tooling built from scratch.
