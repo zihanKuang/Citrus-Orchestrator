@@ -1,76 +1,57 @@
-"""
-MCP Client - Handles connection to MCP Server
-"""
+"""MCP client: stdio (local) or Streamable HTTP (remote)."""
+
 import asyncio
-from typing import List, Dict, Any, Optional
-from contextlib import AsyncExitStack
 import os
+from contextlib import AsyncExitStack
+from typing import Any, Dict, List, Optional
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamablehttp_client
 
 from .exceptions import (
     MCPConnectionError,
-    ToolNotFoundError,
     ToolExecutionError,
+    ToolNotFoundError,
     ToolTimeoutError,
 )
 from .logging_utils import log_mcp_debug, log_mcp_error
 
 
 class MCPClient:
-    """Client for connecting to and interacting with MCP Server"""
-
     def __init__(
         self,
-        command: str,
-        args: List[str],
+        command: str = "",
+        args: Optional[List[str]] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         timeout_seconds: float = 60.0,
+        url: Optional[str] = None,
+        auth_token: Optional[str] = None,
     ):
         self.command = command
-        self.args = args
+        self.args = args or []
         self.cwd = cwd
         self.env = env
         self.timeout_seconds = timeout_seconds
+        self.url = url
+        self.auth_token = auth_token or os.getenv("MCP_AUTH_TOKEN")
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         self._tools_cache: Dict[str, Dict] = {}
 
     async def connect(self):
-        """Connect to MCP server via stdio"""
         try:
-            log_mcp_debug(
-                f"Connecting to MCP server: {self.command} {' '.join(self.args)}"
-                + (f" (cwd={self.cwd})" if self.cwd else "")
-            )
-
-            # Ensure MCP server can import its local `tools` package
-            child_env = dict(os.environ)
-            if self.cwd:
-                existing = child_env.get("PYTHONPATH", "")
-                child_env["PYTHONPATH"] = (
-                    self.cwd if not existing else f"{self.cwd}{os.pathsep}{existing}"
+            if self.url:
+                log_mcp_debug(f"Connecting to MCP over HTTP: {self.url}")
+                await self._connect_http()
+            else:
+                log_mcp_debug(
+                    f"Connecting to MCP over stdio: "
+                    f"{self.command} {' '.join(self.args)}"
+                    + (f" (cwd={self.cwd})" if self.cwd else "")
                 )
-            if self.env:
-                child_env.update(self.env)
-
-            server_params = StdioServerParameters(
-                command=self.command,
-                args=self.args,
-                env=child_env,
-                cwd=self.cwd,
-            )
-
-            stdio_transport = await self.exit_stack.enter_async_context(
-                stdio_client(server_params)
-            )
-            read_stream, write_stream = stdio_transport
-
-            self.session = await self.exit_stack.enter_async_context(
-                ClientSession(read_stream, write_stream)
-            )
+                await self._connect_stdio()
 
             await self.session.initialize()
             log_mcp_debug("Connected to MCP server")
@@ -82,8 +63,46 @@ class MCPClient:
                 f"MCP connection failed: {e}", original_error=e
             )
 
+    async def _connect_stdio(self):
+        child_env = dict(os.environ)
+        if self.cwd:
+            existing = child_env.get("PYTHONPATH", "")
+            child_env["PYTHONPATH"] = (
+                self.cwd if not existing else f"{self.cwd}{os.pathsep}{existing}"
+            )
+        if self.env:
+            child_env.update(self.env)
+
+        server_params = StdioServerParameters(
+            command=self.command,
+            args=self.args,
+            env=child_env,
+            cwd=self.cwd,
+        )
+
+        read_stream, write_stream = await self.exit_stack.enter_async_context(
+            stdio_client(server_params)
+        )
+        self.session = await self.exit_stack.enter_async_context(
+            ClientSession(read_stream, write_stream)
+        )
+
+    async def _connect_http(self):
+        headers: Dict[str, str] = {}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+
+        transport = await self.exit_stack.enter_async_context(
+            streamablehttp_client(self.url, headers=headers)
+        )
+        # streamablehttp_client yields (read, write, get_session_id)
+        read_stream, write_stream, _get_session_id = transport
+
+        self.session = await self.exit_stack.enter_async_context(
+            ClientSession(read_stream, write_stream)
+        )
+
     async def disconnect(self):
-        """Disconnect from MCP server"""
         try:
             await self.exit_stack.aclose()
             self.session = None
@@ -92,22 +111,15 @@ class MCPClient:
             log_mcp_error("Error during disconnect", error=e)
 
     async def _fetch_tools(self):
-        """Fetch available tools from MCP server"""
         try:
             response = await self.session.list_tools()
-
             for tool in response.tools:
                 self._tools_cache[tool.name] = {
                     "name": tool.name,
                     "description": tool.description,
                     "input_schema": tool.inputSchema,
                 }
-
-            log_mcp_debug(
-                f"Fetched {len(self._tools_cache)} tools from MCP server"
-            )
-            log_mcp_debug(f"Available tools: {list(self._tools_cache.keys())}")
-
+            log_mcp_debug(f"Fetched {len(self._tools_cache)} tools")
         except Exception as e:
             log_mcp_error("Failed to fetch tools", error=e)
             raise MCPConnectionError(
@@ -115,7 +127,6 @@ class MCPClient:
             )
 
     def get_tools(self) -> List[Dict[str, Any]]:
-        """Get list of available tools in LLM function calling format"""
         return [
             {
                 "type": "function",
@@ -129,7 +140,6 @@ class MCPClient:
         ]
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
-        """Call a tool through MCP and return text result."""
         if tool_name not in self._tools_cache:
             raise ToolNotFoundError(
                 f"Tool '{tool_name}' not found. "
@@ -144,13 +154,13 @@ class MCPClient:
             )
 
             if hasattr(result, "content") and result.content:
-                content_parts = []
+                parts = []
                 for content in result.content:
                     if hasattr(content, "text"):
-                        content_parts.append(content.text)
+                        parts.append(content.text)
                     else:
-                        content_parts.append(str(content))
-                result_text = "\n".join(content_parts)
+                        parts.append(str(content))
+                result_text = "\n".join(parts)
             else:
                 result_text = str(result)
 
