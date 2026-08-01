@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "Hand-written ReAct agent CLI (Gemini tool calling) for Citrus MCP diagnostics."
 requires-python = ">=3.12"
 dependencies = [
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2",
     "google-generativeai>=0.8.0",
     "python-dotenv>=1.0.0",
 ]

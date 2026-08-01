@@ -1,6 +1,6 @@
 # MCP Server Dependencies
 # Core MCP SDK
-mcp>=1.0.0
+mcp>=1.0.0,<2
 
 # Kubernetes interaction
 kubernetes>=28.0.0
