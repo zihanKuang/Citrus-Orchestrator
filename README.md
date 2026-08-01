@@ -5,6 +5,8 @@ Local Kubernetes platform for progressive delivery, observability, and Agentic S
 Workload: [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) (Helm).  
 Ops layer (this repo): monitoring stack, canary tooling, MCP server, hand-written ReAct agent CLI, Chaos Mesh demos.
 
+**Demo video:** [docs/assets/demo-walkthrough.mp4](docs/assets/demo-walkthrough.mp4) — chaos inject → self-heal → agent RCA.
+
 ## What this repo is
 
 | Layer | What | Where |
@@ -80,7 +82,7 @@ cd components
 python -m agent_cli "What happened to the frontend pods? RCA + validate recovery."
 ```
 
-See [docs/DEMO.md](docs/DEMO.md) for the full interview demo path.
+See [docs/DEMO.md](docs/DEMO.md) for the full interview demo path, or watch [demo-walkthrough.mp4](docs/assets/demo-walkthrough.mp4).
 
 ### 4. Optional: HTTP MCP (in-cluster)
 
@@ -113,6 +115,8 @@ Citrus-Orchestrator/
 ├── scripts/
 │   ├── deployment/         # PowerShell IaC deployers
 │   └── canary-*.py         # canary + rollback automation
-├── docs/DEMO.md
+├── docs/
+│   ├── DEMO.md
+│   └── assets/demo-walkthrough.mp4
 └── README.md
 ```
