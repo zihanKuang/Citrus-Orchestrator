@@ -105,28 +105,3 @@ Citrus-Orchestrator/
 ├── docs/DEMO.md
 └── README.md
 ```
-
-## Design notes (interview talking points)
-
-- **Read-only agent:** MCP RBAC is get/list/watch only. Self-heal after chaos is ReplicaSet recreate; the agent diagnoses and calls `validate_recovery`.
-- **stdio vs HTTP:** stdio for fast local loops; Streamable HTTP + Bearer token + NetworkPolicy for in-cluster exposure.
-- **Image:** `python:3.12-slim` (distroless dropped — native deps / pydantic). Non-root UID still enforced.
-- **History:** earlier AKS / canary / tracing work lives in git history and `TROUBLESHOOTING.md`.
-
-## Resume bullets
-
-Paste-ready English bullets: [docs/RESUME_BULLETS.md](docs/RESUME_BULLETS.md).
-
-## Tests
-
-```powershell
-cd components
-python -m pytest agent_cli/tests mcp-server/tests -v
-```
-
-Covers the retry/backoff math, log truncation (head+tail budgeting around the
-truncation marker), and the Bearer-auth gate in front of the HTTP MCP endpoint.
-
-## License / attribution
-
-OpenTelemetry Demo and related charts belong to their upstream projects. This repository’s contribution is the ops, agent, and chaos layer around that workload.
