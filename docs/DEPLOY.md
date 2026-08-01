@@ -316,8 +316,8 @@ The Deployment expects a Secret key that doesn't exist yet — redo Step 4
 kubectl logs -n citrus -l app=mcp-server --tail=100
 ```
 Common causes: missing dependency in `requirements.txt`, a Python syntax
-error in `server.py`/`tools/kubernetes.py`, or `PROMETHEUS_URL` pointing at a
-service that doesn't exist in this cluster.
+error in `mcp_server/server.py`/`mcp_server/tools/kubernetes.py`, or
+`PROMETHEUS_URL` pointing at a service that doesn't exist in this cluster.
 
 ### RBAC test says a read operation was blocked
 ```bash
@@ -339,7 +339,7 @@ is actually using `mcp-server-sa` (not the namespace's `default` SA).
 - `../../infra/manifests/mcp-server-networkpolicy.yaml` — same-namespace-only ingress
 - `../../infra/manifests/mcp-server-deployment.yaml` — the Deployment itself
 - `../../infra/manifests/rbac-test-pod.yaml` — automated RBAC verification Pod
-- `tools/kubernetes.py` — in-cluster vs kubectl-CLI mode auto-detection
+- `mcp_server/tools/kubernetes.py` — in-cluster vs kubectl-CLI mode auto-detection
 
 ## See also
 

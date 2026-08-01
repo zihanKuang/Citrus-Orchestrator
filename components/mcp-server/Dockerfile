@@ -6,10 +6,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py auth.py http_transport.py /app/
-COPY tools/ /app/tools/
+COPY mcp_server/ /app/mcp_server/
 
 USER 65532:65532
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python3", "/app/server.py"]
+CMD ["python3", "-m", "mcp_server.server"]

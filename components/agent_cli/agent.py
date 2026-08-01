@@ -242,15 +242,18 @@ class ReActAgent:
         max_length = self.config.max_content_length
         if len(content) <= max_length:
             return content
-        
-        head_size = max_length // 2
-        tail_size = max_length - head_size - 100
-        
-        truncated = (
-            content[:head_size]
-            + f"\n\n... [TRUNCATED {len(content) - max_length} characters] ...\n\n"
-            + content[-tail_size:]
-        )
+
+        marker = f"\n\n... [TRUNCATED {len(content) - max_length} characters] ...\n\n"
+        # Budget the head/tail split around the marker's real length instead of a
+        # fixed guess — a fixed guess goes negative for small max_length, which used
+        # to make content[-tail_size:] wrap around and return content LONGER than
+        # the original (defeating the whole point of truncating it).
+        budget = max(0, max_length - len(marker))
+        head_size = budget // 2
+        tail_size = budget - head_size
+
+        tail = content[-tail_size:] if tail_size > 0 else ""
+        truncated = content[:head_size] + marker + tail
         log_agent_debug(f"Truncated content from {len(content)} to {len(truncated)} chars")
         return truncated
     
