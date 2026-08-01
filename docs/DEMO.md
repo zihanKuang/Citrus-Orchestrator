@@ -15,6 +15,9 @@ Expect otel-demo + monitoring pods Running (may take several minutes).
 
 ```powershell
 cd components
+# one-time in this venv (if you see No module named mcp / agent_cli):
+#   pip install -e ".[test]"
+#   pip install -e "mcp-server[test]"
 # agent_cli/.env with GEMINI_API_KEY=
 python -m agent_cli "List pods in citrus and summarize unhealthy ones."
 ```
@@ -50,8 +53,8 @@ kubectl delete -f infra/chaos/pod-kill-frontend.yaml
 
 ```powershell
 cd components\mcp-server
-docker build -t mcp-server:v3 .
-# Kind: kind load docker-image mcp-server:v3
+docker build -t mcp-server:v4 .
+# Kind: kind load docker-image mcp-server:v4
 # Docker Desktop K8s: image usually already visible
 
 kubectl apply -f ..\..\infra\rbac\mcp-server-rbac.yaml

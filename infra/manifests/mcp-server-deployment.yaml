@@ -38,8 +38,9 @@ spec:
 
       containers:
         - name: mcp-server
-          image: mcp-server:v3
+          image: mcp-server:v4
           imagePullPolicy: IfNotPresent
+          workingDir: /app
 
           command: ["python3", "-m", "mcp_server.server"]
           args:

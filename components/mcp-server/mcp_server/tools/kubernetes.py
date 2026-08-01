@@ -115,6 +115,16 @@ class KubernetesTools:
         )
         return ",".join(f"{k}={v}" for k, v in label_dict.items())
 
+    @staticmethod
+    def _container_statuses(pod: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """kubectl JSON is camelCase; the Python client to_dict() is snake_case."""
+        status = pod.get("status") or {}
+        return status.get("containerStatuses") or status.get("container_statuses") or []
+
+    @staticmethod
+    def _restart_count(container: Dict[str, Any]) -> int:
+        return int(container.get("restartCount") or container.get("restart_count") or 0)
+
     async def list_pods(self) -> str:
         """List all pods in the namespace with phase, readiness, restarts, labels."""
         try:
@@ -143,8 +153,8 @@ class KubernetesTools:
                     or labels.get("app.kubernetes.io/name")
                     or "n/a"
                 )
-                container_statuses = pod.get("status", {}).get("container_statuses") or []
-                restarts = sum(c.get("restart_count", 0) or 0 for c in container_statuses)
+                container_statuses = self._container_statuses(pod)
+                restarts = sum(self._restart_count(c) for c in container_statuses)
                 ready = (
                     all(c.get("ready", False) for c in container_statuses)
                     if container_statuses
@@ -193,8 +203,8 @@ class KubernetesTools:
             for pod in items:
                 name = pod["metadata"]["name"]
                 phase = pod.get("status", {}).get("phase", "Unknown")
-                container_statuses = pod.get("status", {}).get("container_statuses") or []
-                restarts = sum(c.get("restart_count", 0) or 0 for c in container_statuses)
+                container_statuses = self._container_statuses(pod)
+                restarts = sum(self._restart_count(c) for c in container_statuses)
                 is_ready = (
                     phase == "Running"
                     and bool(container_statuses)
@@ -292,8 +302,8 @@ class KubernetesTools:
             for pod in data.get("items", []):
                 name = pod["metadata"]["name"]
                 phase = pod["status"]["phase"]
-                statuses = pod["status"].get("container_statuses") or []
-                restarts = sum(c.get("restart_count", 0) or 0 for c in statuses)
+                statuses = self._container_statuses(pod)
+                restarts = sum(self._restart_count(c) for c in statuses)
                 ready = all(c.get("ready", False) for c in statuses) if statuses else False
 
                 info = (

@@ -52,13 +52,24 @@ kubectl port-forward -n citrus svc/jaeger 16686:16686
 
 ### 2. Run the Agent (stdio)
 
+One-time setup (per venv / machine):
+
 ```powershell
 cd components
-# copy agent_cli/.env.example -> agent_cli/.env and set GEMINI_API_KEY
-pip install -r agent_cli\requirements.txt
-pip install -r mcp-server\requirements.txt
+copy agent_cli\.env.example agent_cli\.env
+# edit agent_cli\.env → set GEMINI_API_KEY=
+pip install -e ".[test]"
+pip install -e "mcp-server[test]"
+```
+
+Then run:
+
+```powershell
+cd components
 python -m agent_cli "What is the status of frontend pods in citrus?"
 ```
+
+`python -m agent_cli` needs those editable installs. `pip install -r .../requirements.txt` alone is not enough (you get `No module named mcp` / `agent_cli`).
 
 ### 3. Chaos + diagnosis demo
 
@@ -74,7 +85,7 @@ See [docs/DEMO.md](docs/DEMO.md) for the full interview demo path.
 ### 4. Optional: HTTP MCP (in-cluster)
 
 ```powershell
-# after building/loading image mcp-server:v3
+# after building/loading image mcp-server:v4
 kubectl apply -f infra/rbac/mcp-server-rbac.yaml
 kubectl apply -f infra/manifests/mcp-server-secret.yaml
 kubectl apply -f infra/manifests/mcp-server-service.yaml
