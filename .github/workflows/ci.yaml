@@ -53,6 +53,29 @@ jobs:
             --dry-run > /dev/null
           echo "OpenTelemetry Demo values are valid"
 
+  run-unit-tests:
+    name: Run Agent/MCP Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install pytest
+          pip install -r components/agent_cli/requirements.txt
+          pip install -r components/mcp-server/requirements.txt
+
+      - name: Run tests
+        working-directory: components
+        run: python -m pytest agent_cli/tests mcp-server/tests -v
+
   validate-deployment-scripts:
     name: Validate Deployment Scripts
     runs-on: ubuntu-latest
@@ -106,7 +129,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [validate-helm-configs, validate-deployment-scripts, validate-documentation]
+    needs: [validate-helm-configs, run-unit-tests, validate-deployment-scripts, validate-documentation]
     if: always()
 
     steps:
@@ -116,12 +139,18 @@ jobs:
           echo "CI Validation Summary"
           echo "========================================="
           echo "Helm Configs: ${{ needs.validate-helm-configs.result }}"
+          echo "Unit Tests: ${{ needs.run-unit-tests.result }}"
           echo "Deployment Scripts: ${{ needs.validate-deployment-scripts.result }}"
           echo "Documentation: ${{ needs.validate-documentation.result }}"
           echo "========================================="
           
           if [ "${{ needs.validate-helm-configs.result }}" != "success" ]; then
             echo "Helm configuration validation failed"
+            exit 1
+          fi
+          
+          if [ "${{ needs.run-unit-tests.result }}" != "success" ]; then
+            echo "Unit tests failed"
             exit 1
           fi
           
