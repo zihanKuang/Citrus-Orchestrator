@@ -346,11 +346,14 @@ class KubernetesTools:
                     )
                     if ts is None or ts < cutoff:
                         continue
+                    involved = event.get("involvedObject") or {}
+                    obj_ref = f"{involved.get('kind') or 'Object'}/{involved.get('name') or 'N/A'}"
                     rows.append(
                         (
                             ts,
                             event.get("type") or "N/A",
                             event.get("reason") or "N/A",
+                            obj_ref,
                             event.get("message") or "N/A",
                         )
                     )
@@ -368,11 +371,18 @@ class KubernetesTools:
                     )
                     if ts is None or ts < cutoff:
                         continue
+                    involved = event.involved_object
+                    obj_ref = (
+                        f"{involved.kind or 'Object'}/{involved.name or 'N/A'}"
+                        if involved
+                        else "Object/N/A"
+                    )
                     rows.append(
                         (
                             ts,
                             event.type or "N/A",
                             event.reason or "N/A",
+                            obj_ref,
                             event.message or "N/A",
                         )
                     )
@@ -386,9 +396,17 @@ class KubernetesTools:
             rows.sort(key=lambda r: r[0])
             # Cap output to keep context small; newest last
             rows = rows[-40:]
-            lines = [f"Events in last {minutes}m (namespace={self.namespace}):", "TIME\tTYPE\tREASON\tMESSAGE"]
-            for ts, evt_type, reason, message in rows:
-                lines.append(f"{ts.isoformat()}\t{evt_type}\t{reason}\t{message}")
+            lines = [
+                f"Events in last {minutes}m (namespace={self.namespace}):",
+                "NOTE: Events are correlated by the OBJECT column, not by timestamp "
+                "proximity alone. Events for different objects (e.g. different pod "
+                "names) may be unrelated even if they occur seconds apart -- this "
+                "commonly happens when a previous experiment/resource is deleted "
+                "right before a new one is created.",
+                "TIME\tTYPE\tREASON\tOBJECT\tMESSAGE",
+            ]
+            for ts, evt_type, reason, obj_ref, message in rows:
+                lines.append(f"{ts.isoformat()}\t{evt_type}\t{reason}\t{obj_ref}\t{message}")
             return "\n".join(lines)
 
         except subprocess.CalledProcessError as e:

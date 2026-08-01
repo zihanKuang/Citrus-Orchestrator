@@ -107,8 +107,11 @@ async def list_tools() -> list[Tool]:
             name="get_recent_events",
             description=(
                 f"Get Kubernetes events from '{NAMESPACE}' within a time window. "
-                "Shows timestamp, type, reason, and message. "
-                "Look for Killing, Started, Pulled, BackOff, Unhealthy after chaos."
+                "Shows timestamp, type, reason, involved OBJECT (kind/name), and message. "
+                "Look for Killing, Started, Pulled, BackOff, Unhealthy after chaos. "
+                "IMPORTANT: always correlate events using the OBJECT column, not just "
+                "timestamp proximity -- an event about one pod can appear right next "
+                "to an unrelated event about a different (often stale/previous) pod."
             ),
             inputSchema={
                 "type": "object",
