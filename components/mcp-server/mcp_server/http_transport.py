@@ -12,7 +12,7 @@ from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
 from starlette.routing import Route
 
-from auth import is_authorized
+from .auth import is_authorized
 
 logger = logging.getLogger(__name__)
 

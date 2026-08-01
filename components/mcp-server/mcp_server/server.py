@@ -14,8 +14,8 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-from tools import KubernetesTools
-from tools.kubernetes import default_prometheus_url, resolve_namespace
+from .tools import KubernetesTools
+from .tools.kubernetes import default_prometheus_url, resolve_namespace
 
 logging.basicConfig(
     level=logging.INFO,
@@ -239,7 +239,7 @@ async def run_stdio() -> None:
 
 
 async def run_http(host: str, port: int) -> None:
-    from http_transport import run_streamable_http
+    from .http_transport import run_streamable_http
 
     logger.info(f"Starting MCP server on http://{host}:{port}/mcp")
     await run_streamable_http(server, host=host, port=port)
