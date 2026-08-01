@@ -41,7 +41,7 @@ spec:
           image: mcp-server:v3
           imagePullPolicy: IfNotPresent
 
-          command: ["python3", "/app/server.py"]
+          command: ["python3", "-m", "mcp_server.server"]
           args:
             - "--transport"
             - "streamable-http"

@@ -66,11 +66,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
+      - name: Install components (editable)
         run: |
-          pip install pytest
-          pip install -r components/agent_cli/requirements.txt
-          pip install -r components/mcp-server/requirements.txt
+          pip install -e "components[test]"
+          pip install -e "components/mcp-server[test]"
 
       - name: Run tests
         working-directory: components
