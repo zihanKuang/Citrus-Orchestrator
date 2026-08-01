@@ -1,13 +1,20 @@
-# MCP Server Deployment Guide (Phase 2.4)
+# MCP Server: Deployment & RBAC Verification Guide
 
-Complete step-by-step guide to deploy MCP Server with RBAC security into your Kubernetes cluster.
+Step-by-step guide to build the MCP server image and deploy it **inside** the
+cluster over Streamable HTTP, with least-privilege RBAC and a real
+verification pass (not just "trust me, it's secure").
+
+For the shorter chaos-injection demo path, see [DEMO.md](DEMO.md). This guide
+is the deeper one: it's what you run once to stand the in-cluster MCP server
+up, and what you'd walk an interviewer through if they asked "how do you know
+the AI can't do something dangerous?"
 
 ## Prerequisites
 
 - Kubernetes cluster running (Docker Desktop, kind, or minikube)
 - kubectl configured and connected
 - Docker installed
-- citrus namespace exists
+- `citrus` namespace exists
 
 Verify:
 ```bash
@@ -17,462 +24,324 @@ kubectl get namespace citrus
 
 ---
 
-## Step 1: Build Docker Image
+## Step 1: Build the Docker Image
 
-Navigate to MCP Server directory:
 ```powershell
 cd components/mcp-server
+docker build -t mcp-server:v3 .
 ```
 
-Build the multi-stage distroless image:
-```bash
-docker build -t mcp-server:v1 .
-```
+The tag matters: `infra/manifests/mcp-server-deployment.yaml` and
+`infra/manifests/rbac-test-pod.yaml` both hardcode `image: mcp-server:v3`.
+If you build a different tag, update those two files too (or the Pod won't
+find your image and you'll get `ImagePullBackOff`).
 
 **Verify build:**
 ```bash
 docker images | findstr mcp-server
-
-# Expected output:
-# mcp-server    v1    <image-id>   <size>   <time>
 ```
 
-**Check image size** (should be ~50-100 MB, not 900 MB):
-```bash
-docker images mcp-server:v1 --format "{{.Size}}"
-```
+The base image is `python:3.12-slim`, not distroless — see
+[README design notes](../README.md#design-notes-interview-talking-points) for
+why that trade-off was made. Don't expect a sub-100MB image; slim + the
+`kubernetes`/`mcp` Python deps land in the low hundreds of MB, which is still
+far smaller than a full `python:3.12` image.
 
 ---
 
-## Step 2: Load Image into Cluster
+## Step 2: Load the Image into Your Cluster
 
-### For Docker Desktop (Kubernetes)
+### Docker Desktop (Kubernetes)
+No extra step — Docker Desktop shares its image cache with its own cluster.
+
+### kind
 ```bash
-# Image is already available (Docker Desktop shares images with K8s)
-# No additional steps needed
+kind load docker-image mcp-server:v3
 ```
 
-### For kind
+### minikube
 ```bash
-kind load docker-image mcp-server:v1
+minikube image load mcp-server:v3
 ```
 
-### For minikube
+**Verify image is loaded (kind/minikube):**
 ```bash
-minikube image load mcp-server:v1
-```
-
-**Verify image in cluster:**
-```bash
-# For kind/minikube, check the image is loaded:
 docker exec -it <kind-control-plane-node> crictl images | findstr mcp-server
-
-# For Docker Desktop, the image should be directly available
 ```
 
 ---
 
-## Step 3: Apply RBAC Configuration
+## Step 3: Apply RBAC (ServiceAccount + Role + RoleBinding)
 
-Deploy ServiceAccount, Role, and RoleBinding:
 ```bash
 kubectl apply -f ../../infra/rbac/mcp-server-rbac.yaml
 ```
 
-**Verify RBAC resources created:**
+**Verify the resources exist:**
 ```bash
-# Check ServiceAccount
 kubectl get serviceaccount mcp-server-sa -n citrus
-# Expected: NAME              SECRETS   AGE
-# mcp-server-sa     0         <time>
-
-# Check Role
 kubectl get role mcp-server-readonly -n citrus
-# Expected: NAME                    CREATED AT
-# mcp-server-readonly     <timestamp>
-
-# Check RoleBinding
 kubectl get rolebinding mcp-server-readonly-binding -n citrus
-# Expected: NAME                               ROLE                         AGE
-# mcp-server-readonly-binding        Role/mcp-server-readonly     <time>
 ```
 
-**Verify RBAC permissions** (before deploying Pod):
+**Verify the permissions themselves, before deploying the Pod:**
 ```bash
-# Should be allowed (get pods)
+# Should be allowed
 kubectl auth can-i get pods --as=system:serviceaccount:citrus:mcp-server-sa -n citrus
 # Expected: yes
 
-# Should be denied (delete pods)
+# Should be denied
 kubectl auth can-i delete pods --as=system:serviceaccount:citrus:mcp-server-sa -n citrus
 # Expected: no
 
-# Should be denied (other namespace)
+# Should be denied (wrong namespace)
 kubectl auth can-i get pods --as=system:serviceaccount:citrus:mcp-server-sa -n kube-system
 # Expected: no
 ```
 
-If you see unexpected results, review `infra/rbac/mcp-server-rbac.yaml`.
+If any of these don't match, fix `infra/rbac/mcp-server-rbac.yaml` before
+continuing — everything downstream assumes this is correct.
 
 ---
 
-## Step 4: Deploy MCP Server
+## Step 4: Apply the Auth Secret, Service, and NetworkPolicy
 
-Deploy the Pod:
+The Deployment (next step) runs the server over **Streamable HTTP** and reads
+its Bearer token from a Secret at startup — it will fail to start without it.
+Apply these three, in order, before the Deployment:
+
+```bash
+kubectl apply -f ../../infra/manifests/mcp-server-secret.yaml
+kubectl apply -f ../../infra/manifests/mcp-server-service.yaml
+kubectl apply -f ../../infra/manifests/mcp-server-networkpolicy.yaml
+```
+
+- **Secret** (`mcp-server-auth`): the shared token the agent must present as
+  `Authorization: Bearer <token>`. The default value (`change-me-citrus-mcp`)
+  is fine for a local demo — rotate it before using this anywhere real.
+- **Service** (`ClusterIP`): stable DNS name (`mcp-server.citrus.svc`) and the
+  target for `kubectl port-forward`.
+- **NetworkPolicy**: only pods in the same namespace can reach port 8080.
+  There is no Ingress — this server is never meant to be reachable from
+  outside the cluster.
+
+---
+
+## Step 5: Deploy the MCP Server
+
 ```bash
 kubectl apply -f ../../infra/manifests/mcp-server-deployment.yaml
 ```
 
-**Watch deployment progress:**
+**Watch the rollout:**
 ```bash
 kubectl get pods -n citrus -l app=mcp-server -w
-# Press Ctrl+C to stop watching
 ```
 
-**Expected output:**
+**Expected:**
 ```
 NAME                          READY   STATUS    RESTARTS   AGE
 mcp-server-xxxxxxxxxx-xxxxx   1/1     Running   0          30s
 ```
 
-**If Pod is not Running, check events:**
+**If it's not `Running`:**
 ```bash
 kubectl describe pod -n citrus -l app=mcp-server
-
-# Look for error messages in the Events section
 ```
-
-**Common issues:**
-- `ImagePullBackOff`: Image not loaded into cluster (redo Step 2)
-- `CrashLoopBackOff`: Application error (check logs in Step 5)
-- `Pending`: Resource constraints (check cluster has enough CPU/memory)
+- `ImagePullBackOff` → image wasn't loaded into the cluster (redo Step 2), or the tag doesn't match Step 1.
+- `CreateContainerConfigError` → the Secret from Step 4 is missing or misnamed — check `envFrom`/`secretKeyRef` against `mcp-server-auth`.
+- `CrashLoopBackOff` → application error, check logs (Step 6).
+- `Pending` → resource constraints; check the cluster has enough CPU/memory.
 
 ---
 
-## Step 5: Verify Deployment
+## Step 6: Verify the Deployment
 
-### Check Pod Logs
+**Logs** (this runs `--transport streamable-http`, not stdio):
 ```bash
 kubectl logs -n citrus -l app=mcp-server --tail=50
 ```
 
-**Expected log output:**
+**Expected:**
 ```
 [OK] Kubernetes client initialized (in-cluster mode)
-     Using ServiceAccount token from /var/run/secrets/...
-     Permissions controlled by RBAC
-[INFO] MCP Server initialized: citrus-k8s-ops
-[INFO] Starting MCP server on stdio...
-[INFO] Server ready. Waiting for client connection...
+[INFO] MCP Server initialized: citrus-k8s-ops (namespace=citrus, prometheus=http://monitoring-kube-prometheus-prometheus:9090)
+[INFO] Starting MCP server on http://0.0.0.0:8080/mcp
 ```
 
-### Verify In-Cluster Config
+**Health check over the Service:**
 ```bash
-# Get Pod name
+kubectl port-forward -n citrus svc/mcp-server 8080:8080
+curl http://127.0.0.1:8080/health
+```
+
+**In-cluster identity (no local kubeconfig involved):**
+```powershell
 $POD_NAME = kubectl get pods -n citrus -l app=mcp-server -o jsonpath='{.items[0].metadata.name}'
-
-# Check ServiceAccount token is mounted
-kubectl exec -n citrus $POD_NAME -- cat /var/run/secrets/kubernetes.io/serviceaccount/token
-# Expected: Long JWT token string (starts with "eyJ...")
-
-# Check namespace
 kubectl exec -n citrus $POD_NAME -- cat /var/run/secrets/kubernetes.io/serviceaccount/namespace
 # Expected: citrus
 ```
 
 ---
 
-## Step 6: RBAC Security Verification
+## Step 7: RBAC Security Verification — the most important step
 
-This is the **most important step** - verify that RBAC correctly blocks dangerous operations.
+This proves the read-only claim instead of just asserting it. There's a
+ready-made test Pod for this — `infra/manifests/rbac-test-pod.yaml` — that
+runs under the *same* `mcp-server-sa` ServiceAccount and attempts both
+allowed and forbidden operations.
 
-### Copy test script to Pod
 ```bash
-$POD_NAME = kubectl get pods -n citrus -l app=mcp-server -o jsonpath='{.items[0].metadata.name}'
-
-kubectl cp test-rbac.py citrus/${POD_NAME}:/tmp/test-rbac.py
+kubectl apply -f ../../infra/manifests/rbac-test-pod.yaml
+kubectl wait --for=condition=Ready pod/rbac-test -n citrus --timeout=30s || true
+kubectl logs -n citrus rbac-test
+kubectl delete pod -n citrus rbac-test
 ```
 
-### Run RBAC verification
-```bash
-kubectl exec -n citrus $POD_NAME -- python3 /tmp/test-rbac.py
+**Expected output (from the script's own print statements):**
+```
+Test 1: List pods (should SUCCEED)
+PASS: Found N pods
+
+Test 2: Get pod logs (should SUCCEED)
+PASS: Retrieved logs from <pod-name>
+
+Test 3: Delete pod (should BE FORBIDDEN)
+PASS: Permission denied as expected (403 Forbidden)
+
+Test 4: Create pod (should BE FORBIDDEN)
+PASS: Permission denied as expected (403 Forbidden)
+
+Test 5: Access other namespace (should BE FORBIDDEN)
+PASS: Permission denied as expected (403 Forbidden)
 ```
 
-**Expected output:**
-```
-==================================================================
-  MCP Server RBAC Verification
-==================================================================
+**If a "should SUCCEED" test fails:** check the RoleBinding references the
+right ServiceAccount/Role (Step 3), and that `pods`/`pods/log` are in the
+Role's `resources`.
 
-Environment:
-  Namespace: citrus
-  ServiceAccount Token: Found
-
-==================================================================
-  TEST 1: Read Operations (Should SUCCEED)
-==================================================================
-
- PASS - List Pods (27 items)
- PASS - Get Pod Logs (1 items)
- PASS - List Events (X items)
- PASS - List Services (X items)
-
-Read Operations: 4 passed, 0 failed
-
-==================================================================
-  TEST 2: Write Operations (Should FAIL with 403)
-==================================================================
-
- PASS (Correctly blocked by RBAC) - Delete Pod
-      Reason: Forbidden
- PASS (Correctly blocked by RBAC) - Create Pod
-      Reason: Forbidden
- PASS (Correctly blocked by RBAC) - Patch Pod
-      Reason: Forbidden
-
-Write Operations: 3 correctly blocked, 0 issues
-
-==================================================================
-  TEST 3: Cross-Namespace Access (Should FAIL)
-==================================================================
-
- PASS (Correctly blocked) - Namespace: kube-system
- PASS (Correctly blocked) - Namespace: default
-
-Cross-Namespace: 2 correctly blocked, 0 issues
-
-==================================================================
-  FINAL SUMMARY
-==================================================================
-
-Total Tests Passed: 9
-Total Tests Failed: 0
-
- ALL TESTS PASSED!
-   RBAC is correctly configured:
-    Read operations allowed
-    Write operations blocked
-    Cross-namespace access blocked
-    Privileged operations blocked
-
-   Your MCP Server is properly secured! 
-```
-
-### If tests FAIL
-
-**Scenario 1: Write operations succeed (delete/create work)**
-```
- FAIL - Operation succeeded (RBAC too permissive!)
-   SECURITY ISSUE: This operation should be blocked!
-```
-
-**Fix:**
-- Check that Pod is using `serviceAccountName: mcp-server-sa` in deployment YAML
-- Verify RBAC Role only has verbs `["get", "list", "watch"]`
-- Re-apply RBAC configuration
-
-**Scenario 2: Read operations fail (get/list blocked)**
-```
- FAIL (403 Forbidden - RBAC blocked) - List Pods
-```
-
-**Fix:**
-- Check that RoleBinding correctly references the ServiceAccount
-- Verify Role includes `pods` and `pods/log` in resources
-- Check namespace matches everywhere (should be `citrus`)
+**If a "should BE FORBIDDEN" test instead succeeds:** stop and treat this as
+a real incident, not a doc issue — it means the RBAC Role has write verbs it
+shouldn't. Re-check `infra/rbac/mcp-server-rbac.yaml` only has
+`get`/`list`/`watch`.
 
 ---
 
-## Step 7: Manual Verification (The "Demo Story")
+## Step 8: Manual Verification (the interview demo)
 
-This is what you tell in interviews: "I intentionally tried to delete a pod to verify RBAC works."
+Same idea as Step 7, done live and narrated: "I intentionally tried to delete
+a pod through this ServiceAccount to prove RBAC — not the agent's own
+judgment — is what stops it."
 
-### Test 1: Verify you CAN read pods
 ```bash
-kubectl exec -n citrus $POD_NAME -- python3 -c "
-from kubernetes import client, config
-config.load_incluster_config()
-v1 = client.CoreV1Api()
-pods = v1.list_namespaced_pod('citrus', limit=5)
-print(f'Found {len(pods.items)} pods')
-for pod in pods.items:
-    print(f'  - {pod.metadata.name}: {pod.status.phase}')
-"
-```
+$POD_NAME = kubectl get pods -n citrus -l app=mcp-server -o jsonpath='{.items[0].metadata.name}'
 
-**Expected:**
-```
-Found 5 pods
-  - frontend-xxx: Running
-  - cart-xxx: Running
-  - checkout-xxx: Running
-  ...
-```
-
-### Test 2: Verify you CANNOT delete pods
-```bash
 kubectl exec -n citrus $POD_NAME -- python3 -c "
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 config.load_incluster_config()
 v1 = client.CoreV1Api()
 try:
-    v1.delete_namespaced_pod('frontend-xxx', 'citrus')
-    print(' SECURITY ISSUE: Delete succeeded!')
+    v1.delete_namespaced_pod('some-pod-name', 'citrus')
+    print('SECURITY ISSUE: delete succeeded!')
 except ApiException as e:
-    if e.status == 403:
-        print(' RBAC correctly blocked delete operation')
-        print(f'   Reason: {e.reason}')
-    else:
-        print(f'Unexpected error: {e.status} {e.reason}')
+    print(f'Blocked as expected: {e.status} {e.reason}')
 "
 ```
 
-**Expected:**
-```
- RBAC correctly blocked delete operation
-   Reason: Forbidden: User "system:serviceaccount:citrus:mcp-server-sa" 
-           cannot delete resource "pods" in API group "" in the namespace "citrus"
-```
-
-**This 403 error is EXACTLY what you want!** 
+**Expected:** `Blocked as expected: 403 Forbidden`.
 
 ---
 
 ## Success Criteria
 
-Phase 2.4 is complete when:
-
-- Docker image built with distroless base (~50-100 MB)
-- RBAC ServiceAccount, Role, RoleBinding applied
-- MCP Server Pod running in `citrus` namespace
-- Pod logs show "in-cluster mode" (not kubectl mode)
-- RBAC test script: all tests pass
-- Manual verification: read works, delete fails with 403
+- `python:3.12-slim`, non-root image built and loaded into the cluster
+- RBAC (ServiceAccount, Role, RoleBinding), Secret, Service, and NetworkPolicy all applied
+- MCP Server Pod `Running`, logs show `in-cluster mode` and `streamable-http` (not stdio, not kubectl-CLI mode)
+- `/health` responds over the port-forwarded Service
+- `rbac-test-pod.yaml`: all 5 checks PASS
+- Manual delete attempt: blocked with 403
 
 ---
 
 ## Interview Talking Points
 
-After completing this phase, you can confidently say:
+**Security architecture**
+> "The MCP server runs under a dedicated ServiceAccount with a namespace-scoped Role — get/list/watch only. It can read pod logs and events for diagnostics, but delete/create/patch are not in the Role at all, so even a hallucinated destructive tool call gets a 403 straight from the Kubernetes API, before it ever reaches my code."
 
-### Security Architecture
-> "I deployed the MCP Server inside the cluster using a dedicated ServiceAccount with RBAC restrictions. The server can read pod logs and events (necessary for diagnostics) but cannot delete, create, or modify resources. Even if the AI hallucinates a dangerous command, Kubernetes physically blocks it with a 403 error."
+**Image trade-off, not a clean win**
+> "I built this as distroless first for the smaller attack surface, but `pydantic_core`'s native extension couldn't initialize without a shell/libc present in the image, so it crash-looped. I fell back to `python:3.12-slim` + non-root UID + `readOnlyRootFilesystem` + all capabilities dropped. It's not distroless, but it's still a meaningfully reduced surface, and I can explain exactly why I didn't go further."
 
-### Distroless Benefits
-> "I used Google's distroless Python image, which contains only the Python runtime—no shell, no package manager, no system utilities. This reduces the attack surface by 90%. If an attacker exploits a vulnerability, they have no tools to escalate privileges or move laterally."
+**In-cluster identity**
+> "The Pod uses in-cluster config, not a mounted personal kubeconfig — Kubernetes injects a ServiceAccount token scoped to exactly the Role I defined, and it auto-rotates."
 
-### In-Cluster Config
-> "Instead of mounting my personal kubeconfig (which has cluster-admin rights), I use in-cluster config. Kubernetes automatically injects a ServiceAccount token with minimal permissions. The token auto-rotates and is scoped to exactly what the application needs."
+**Streamable HTTP, not stdio, in-cluster**
+> "Locally the agent just spawns the MCP server as a stdio subprocess — fastest iteration loop. In-cluster, stdio doesn't make sense (nothing to spawn it as a child of), so I run Streamable HTTP behind a ClusterIP Service, gated by a Bearer token Secret and a NetworkPolicy that only allows same-namespace ingress — no public Ingress at all."
 
-### Verification Story
-> "To verify RBAC works, I intentionally added code to delete a pod. When deployed, Kubernetes returned 403 Forbidden, proving that even with malicious code or AI hallucinations, the RBAC policy acts as a physical barrier."
+**Verification, not assertion**
+> "I don't just claim it's read-only — `rbac-test-pod.yaml` runs under the same ServiceAccount and actively tries to delete and create pods. If those ever stopped returning 403, that test would fail and tell me immediately."
 
 ---
 
-## Cleanup (Optional)
+## Cleanup
 
-To remove everything:
 ```bash
-# Delete deployment
 kubectl delete -f ../../infra/manifests/mcp-server-deployment.yaml
-
-# Delete RBAC
+kubectl delete -f ../../infra/manifests/mcp-server-networkpolicy.yaml
+kubectl delete -f ../../infra/manifests/mcp-server-service.yaml
+kubectl delete -f ../../infra/manifests/mcp-server-secret.yaml
 kubectl delete -f ../../infra/rbac/mcp-server-rbac.yaml
-
-# Delete image (if needed)
-docker rmi mcp-server:v1
+docker rmi mcp-server:v3
 ```
 
 ---
 
 ## Troubleshooting
 
-### Pod stuck in ImagePullBackOff
+### Pod stuck in `ImagePullBackOff`
 ```bash
-# Check if image exists locally
 docker images | findstr mcp-server
-
-# Reload image into cluster
-# For kind:
-kind load docker-image mcp-server:v1
-
-# For minikube:
-minikube image load mcp-server:v1
+# kind:
+kind load docker-image mcp-server:v3
+# minikube:
+minikube image load mcp-server:v3
 ```
 
-### Pod stuck in CrashLoopBackOff
+### Pod stuck in `CreateContainerConfigError`
+The Deployment expects a Secret key that doesn't exist yet — redo Step 4
+(`mcp-server-secret.yaml`) before re-applying the Deployment.
+
+### Pod stuck in `CrashLoopBackOff`
 ```bash
-# Check logs for Python errors
 kubectl logs -n citrus -l app=mcp-server --tail=100
-
-# Common issues:
-# - Missing dependencies in requirements.txt
-# - Syntax error in server.py or tools/kubernetes.py
-# - Import error (check PYTHONPATH in Dockerfile)
 ```
+Common causes: missing dependency in `requirements.txt`, a Python syntax
+error in `server.py`/`tools/kubernetes.py`, or `PROMETHEUS_URL` pointing at a
+service that doesn't exist in this cluster.
 
-### RBAC test fails: "Read operations blocked"
+### RBAC test says a read operation was blocked
 ```bash
-# Check ServiceAccount is bound to correct Role
 kubectl get rolebinding mcp-server-readonly-binding -n citrus -o yaml
-
-# Verify subjects.name matches ServiceAccount
-# Verify roleRef.name matches Role
-
-# Check Pod is using correct ServiceAccount
 kubectl get pod -n citrus -l app=mcp-server -o jsonpath='{.items[0].spec.serviceAccountName}'
 # Expected: mcp-server-sa
 ```
-
-### Testing RBAC Permissions
-
-To verify that RBAC correctly restricts the MCP Server:
-
-```bash
-# Run the RBAC test Pod
-kubectl apply -f ../../infra/manifests/rbac-test-pod.yaml
-
-# Wait for test to complete (10-15 seconds)
-kubectl wait --for=condition=Ready pod/rbac-test -n citrus --timeout=30s || true
-
-# View test results
-kubectl logs -n citrus rbac-test
-
-# Clean up
-kubectl delete pod -n citrus rbac-test
-```
-
-**Expected output:**
-- Read operations (list pods, get logs): PASS
-- Write operations (delete, create): PASS (blocked with 403)
-- Cross-namespace access: PASS (blocked with 403)
+Check the RoleBinding's `subjects.name` and `roleRef.name`, and that the Pod
+is actually using `mcp-server-sa` (not the namespace's `default` SA).
 
 ---
 
 ## Related Files
 
-- `Dockerfile` - Single-stage Python slim image
-- `DOCKER-STRATEGY.md` - Docker image strategy comparison (Distroless vs Slim vs Alpine)
-- `../../infra/rbac/mcp-server-rbac.yaml` - RBAC configuration
-- `../../infra/manifests/mcp-server-deployment.yaml` - Kubernetes deployment
-- `../../infra/manifests/rbac-test-pod.yaml` - RBAC verification test Pod
-- `tools/kubernetes.py` - Updated with in-cluster config support
+- `Dockerfile` — single-stage `python:3.12-slim`, non-root
+- `../../infra/rbac/mcp-server-rbac.yaml` — ServiceAccount / Role / RoleBinding
+- `../../infra/manifests/mcp-server-secret.yaml` — Bearer auth token
+- `../../infra/manifests/mcp-server-service.yaml` — ClusterIP Service
+- `../../infra/manifests/mcp-server-networkpolicy.yaml` — same-namespace-only ingress
+- `../../infra/manifests/mcp-server-deployment.yaml` — the Deployment itself
+- `../../infra/manifests/rbac-test-pod.yaml` — automated RBAC verification Pod
+- `tools/kubernetes.py` — in-cluster vs kubectl-CLI mode auto-detection
 
----
+## See also
 
-## Next Steps
-
-After Phase 2.4 is complete:
-
-**Option A: Update README and Notes**
-- Document Phase 2 learnings
-- Add "What I learned" section
-- Update project README with security features
-
-**Option B: Proceed to Phase 3**
-- Hand-write ReAct Agent loop (CLI tool)
-- Implement tool calling orchestration
-- Add error handling and retry logic
-
-**Decision:** Complete all implementation first, then write comprehensive documentation at the end (your preference).
+- [DEMO.md](DEMO.md) — the shorter chaos-injection + diagnosis walkthrough
+- [../README.md](../README.md) — quick start, layout, resume bullets
