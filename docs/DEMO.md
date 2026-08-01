@@ -1,6 +1,6 @@
-# Interview / local demo
+# local demo
 
-Cluster must be running (`kubectl get ns citrus` works). If not, start Kind/Docker Desktop Kubernetes first, then deploy.
+Cluster must be running (`kubectl get ns citrus` works). If not, start Kubernetes first, then deploy.
 
 ## A. Platform up
 
@@ -36,13 +36,6 @@ cd components
 python -m agent_cli "What just happened to the frontend pods in citrus? Short RCA, then validate_recovery."
 ```
 
-What you should be able to say in interview:
-
-1. Chaos Mesh killed one frontend pod  
-2. ReplicaSet recreated it (infra self-heal)  
-3. Agent used MCP tools: events → status → `validate_recovery` → PASS/FAIL  
-4. Agent cannot delete pods (RBAC) — that is intentional  
-
 Cleanup:
 
 ```powershell
@@ -70,14 +63,3 @@ cd ..
 $env:MCP_AUTH_TOKEN="change-me-citrus-mcp"
 python -m agent_cli --mcp-url http://127.0.0.1:8080/mcp "List pods"
 ```
-
-## If something fails
-
-| Symptom | Check |
-|---------|--------|
-| kubectl connection refused | Start local cluster; fix kubecontext |
-| No frontend pods | `2-deploy-application.ps1` |
-| Chaos CRD missing | `install-chaos-mesh.ps1` (Docker Desktop may need docker runtime socket — see script footer) |
-| Agent no GEMINI key | `agent_cli/.env` |
-| HTTP 401 | `MCP_AUTH_TOKEN` must match Secret |
-| MCP pod CrashLoop | `kubectl logs -n citrus -l app=mcp-server` |
