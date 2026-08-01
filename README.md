@@ -117,6 +117,16 @@ Citrus-Orchestrator/
 
 Paste-ready English bullets: [docs/RESUME_BULLETS.md](docs/RESUME_BULLETS.md).
 
+## Tests
+
+```powershell
+cd components
+python -m pytest agent_cli/tests mcp-server/tests -v
+```
+
+Covers the retry/backoff math, log truncation (head+tail budgeting around the
+truncation marker), and the Bearer-auth gate in front of the HTTP MCP endpoint.
+
 ## License / attribution
 
 OpenTelemetry Demo and related charts belong to their upstream projects. This repository’s contribution is the ops, agent, and chaos layer around that workload.
