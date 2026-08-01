@@ -19,7 +19,9 @@ load_dotenv(_REPO_ROOT / ".env", encoding="utf-8-sig")
 
 
 def _default_mcp_server_args() -> list[str]:
-    return [str(_MCP_SERVER_DIR / "server.py")]
+    # Run as a module (not a bare script) since mcp_server/ uses relative
+    # imports; mcp_server_cwd below puts the package on the child's path.
+    return ["-m", "mcp_server.server"]
 
 
 @dataclass
