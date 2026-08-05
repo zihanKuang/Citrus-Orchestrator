@@ -4,7 +4,7 @@
 
 Chaos kill → K8s self-heal → Agent RCA + recovery validation
 
-[![▶ Click to play demo walkthrough](docs/assets/demo-walkthrough-thumb.jpg)](docs/assets/demo-walkthrough.mp4)
+[![▶ Click to play demo walkthrough](docs/assets/demo-walkthrough-thumb.jpg)](https://youtu.be/TZQj9dzH72A)
 
 ---
 
@@ -123,6 +123,6 @@ Citrus-Orchestrator/
 │   └── canary-*.py         # canary + rollback automation
 ├── docs/
 │   ├── DEMO.md
-│   └── assets/demo-walkthrough.mp4
+│   └── assets/demo-walkthrough-thumb.jpg
 └── README.md
 ```
