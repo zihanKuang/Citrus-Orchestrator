@@ -2,12 +2,9 @@
 
 ## Demo
 
-**▶ [Watch the walkthrough](docs/assets/demo-walkthrough.mp4)**  
 Chaos kill → K8s self-heal → Agent RCA + recovery validation
 
-<video src="docs/assets/demo-walkthrough.mp4" controls width="100%">
-Your browser does not support video. <a href="docs/assets/demo-walkthrough.mp4">Open demo-walkthrough.mp4</a>
-</video>
+[![▶ Click to play demo walkthrough](docs/assets/demo-walkthrough-thumb.jpg)](docs/assets/demo-walkthrough.mp4)
 
 ---
 
