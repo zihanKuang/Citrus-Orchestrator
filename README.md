@@ -1,11 +1,20 @@
 # Citrus-Orchestrator
 
+## Demo
+
+**▶ [Watch the walkthrough](docs/assets/demo-walkthrough.mp4)**  
+Chaos kill → K8s self-heal → Agent RCA + recovery validation
+
+<video src="docs/assets/demo-walkthrough.mp4" controls width="100%">
+Your browser does not support video. <a href="docs/assets/demo-walkthrough.mp4">Open demo-walkthrough.mp4</a>
+</video>
+
+---
+
 Local Kubernetes platform for progressive delivery, observability, and Agentic SRE diagnostics.
 
 Workload: [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) (Helm).  
 Ops layer (this repo): monitoring stack, canary tooling, MCP server, hand-written ReAct agent CLI, Chaos Mesh demos.
-
-**Demo video:** [docs/assets/demo-walkthrough.mp4](docs/assets/demo-walkthrough.mp4) — chaos inject → self-heal → agent RCA.
 
 ## What this repo is
 
@@ -82,7 +91,7 @@ cd components
 python -m agent_cli "What happened to the frontend pods? RCA + validate recovery."
 ```
 
-See [docs/DEMO.md](docs/DEMO.md) for the full interview demo path, or watch [demo-walkthrough.mp4](docs/assets/demo-walkthrough.mp4).
+See [docs/DEMO.md](docs/DEMO.md) for the full interview demo path. Demo recording is at the top of this README.
 
 ### 4. Optional: HTTP MCP (in-cluster)
 
