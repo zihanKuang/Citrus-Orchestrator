@@ -21,7 +21,7 @@ Ops layer (this repo): monitoring stack, canary tooling, MCP server, hand-writte
 | Observability | Prometheus, Grafana, Jaeger | `deploy/helm/*`, `scripts/deployment/` |
 | Canary / MLOps | metric-based deploy + rollback | `scripts/canary-*.py` |
 | MCP server | K8s/Prometheus tools over MCP | `components/mcp-server/` |
-| Agent CLI | ReAct loop + Gemini tool calling | `components/agent_cli/` |
+| Agent CLI | ReAct loop + Gemini tool calling + hard evidence stamp | `components/agent_cli/` |
 | Chaos | PodChaos + demo scripts | `infra/chaos/` |
 | RBAC / deploy | least-privilege SA + manifests | `infra/rbac/`, `infra/manifests/` |
 
@@ -76,6 +76,8 @@ Then run:
 cd components
 python -m agent_cli "What is the status of frontend pods in citrus?"
 ```
+
+The answer ends with an `Evidence check: HIGH|MEDIUM|LOW` footer. That stamp is computed from tool-call stats in code, not by the LLM. Zero tool calls is always LOW.
 
 `python -m agent_cli` needs those editable installs. `pip install -r .../requirements.txt` alone is not enough (you get `No module named mcp` / `agent_cli`).
 

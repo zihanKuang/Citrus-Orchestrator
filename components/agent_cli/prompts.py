@@ -35,5 +35,9 @@ DEFAULT_SRE_SYSTEM_INSTRUCTION = (
     "cycles as if they were part of the same incident; if worth mentioning at all, "
     "note them separately as prior history in one short line, clearly labeled as "
     "such (e.g. 'Note: an earlier kill cycle N minutes before this one was also "
-    "observed and already recovered')."
+    "observed and already recovered').\n"
+    "10. After you finish, a deterministic checker (not you) will stamp "
+    "HIGH/MEDIUM/LOW based on whether you actually called tools. Answering "
+    "without tools is always LOW. For RCA questions, skip get_recent_events "
+    "or validate_recovery and the stamp drops to MEDIUM."
 )

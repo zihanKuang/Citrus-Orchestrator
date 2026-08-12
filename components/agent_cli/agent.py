@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from .config import AgentConfig
+from .evidence import assess, attach_footer
 from .mcp_client import MCPClient
 from .llm_client import LLMClient
 from .retry_utils import get_retry_delay
@@ -116,16 +117,19 @@ class ReActAgent:
         
         try:
             result = await self._react_loop()
-            return result
         except MaxStepsExceededError:
             log_agent_error(f"Exceeded max steps ({self.config.max_steps})")
-            return "Agent exceeded maximum reasoning steps without reaching a conclusion."
+            result = "Agent exceeded maximum reasoning steps without reaching a conclusion."
         except Exception as e:
             log_agent_error("Agent error", error=e)
-            return f"Agent encountered an error: {str(e)}"
+            result = f"Agent encountered an error: {str(e)}"
         finally:
             self.stats["end_time"] = time.time()
             self._print_stats()
+
+        check = assess(user_query, result, self.stats)
+        log_agent_info(f"Evidence check: {check.level}")
+        return attach_footer(result, check)
     
     async def _react_loop(self) -> str:
         for step in range(self.config.max_steps):
