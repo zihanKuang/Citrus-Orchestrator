@@ -1,12 +1,8 @@
 ﻿# MCP Client
 mcp>=1.0.0,<2
 
-# Google Gemini
-google-generativeai>=0.8.0
-
-# For alternative LLM providers (optional)
-# openai>=1.0.0
-# anthropic>=0.25.0
+# DeepSeek (OpenAI-compatible API)
+openai>=1.0.0
 
 # Utils
 python-dotenv>=1.0.0

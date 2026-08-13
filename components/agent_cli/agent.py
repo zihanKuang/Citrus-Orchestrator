@@ -44,6 +44,7 @@ class ReActAgent:
             model_name=config.model_name,
             api_key=config.api_key,
             system_instruction=config.system_instruction,
+            base_url=config.llm_base_url,
         )
 
         self.messages: List[Dict[str, Any]] = []

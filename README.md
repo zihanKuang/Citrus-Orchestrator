@@ -21,7 +21,7 @@ Ops layer (this repo): monitoring stack, canary tooling, MCP server, hand-writte
 | Observability | Prometheus, Grafana, Jaeger | `deploy/helm/*`, `scripts/deployment/` |
 | Canary / MLOps | metric-based deploy + rollback | `scripts/canary-*.py` |
 | MCP server | K8s/Prometheus tools over MCP | `components/mcp-server/` |
-| Agent CLI | ReAct loop + Gemini tool calling + hard evidence stamp | `components/agent_cli/` |
+| Agent CLI | ReAct loop + DeepSeek tool calling + hard evidence stamp | `components/agent_cli/` |
 | Chaos | PodChaos + demo scripts | `infra/chaos/` |
 | RBAC / deploy | least-privilege SA + manifests | `infra/rbac/`, `infra/manifests/` |
 
@@ -34,7 +34,7 @@ Ops layer (this repo): monitoring stack, canary tooling, MCP server, hand-writte
 ### Prerequisites
 
 - kubectl, Helm 3, a local cluster (Kind / Docker Desktop / Minikube)
-- Python 3.12+, `GEMINI_API_KEY` for the agent
+- Python 3.12+, `DEEPSEEK_API_KEY` for the agent
 
 ### 1. Deploy platform
 
@@ -65,7 +65,7 @@ One-time setup (per venv / machine):
 ```powershell
 cd components
 copy agent_cli\.env.example agent_cli\.env
-# edit agent_cli\.env → set GEMINI_API_KEY=
+# edit agent_cli\.env → set DEEPSEEK_API_KEY=
 pip install -e ".[test]"
 pip install -e "mcp-server[test]"
 ```
@@ -91,6 +91,16 @@ python -m agent_cli "What happened to the frontend pods? RCA + validate recovery
 ```
 
 See [docs/DEMO.md](docs/DEMO.md) for the full interview demo path. Demo recording is at the top of this README.
+
+### 3b. RCA eval (labeled, hard-rule score)
+
+```powershell
+cd components
+python -m agent_cli.eval_rca --list          # no cluster
+python -m agent_cli.eval_rca --all           # live: 3 scenarios, writes data/eval/
+```
+
+See [docs/EVAL.md](docs/EVAL.md). Hit = the answer named the labeled fault. Evidence HIGH/MEDIUM/LOW is the separate tool-call stamp.
 
 ### 4. Optional: HTTP MCP (in-cluster)
 
@@ -125,6 +135,7 @@ Citrus-Orchestrator/
 │   └── canary-*.py         # canary + rollback automation
 ├── docs/
 │   ├── DEMO.md
+│   ├── EVAL.md
 │   └── assets/demo-walkthrough-thumb.jpg
 └── README.md
 ```

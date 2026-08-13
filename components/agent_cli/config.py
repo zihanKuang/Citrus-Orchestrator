@@ -26,9 +26,10 @@ def _default_mcp_server_args() -> list[str]:
 
 @dataclass
 class AgentConfig:
-    llm_provider: str = "gemini"
-    model_name: str = "gemini-2.5-flash"
+    llm_provider: str = "deepseek"
+    model_name: str = "deepseek-v4-flash"
     api_key: Optional[str] = None
+    llm_base_url: str = "https://api.deepseek.com"
     system_instruction: str = DEFAULT_SRE_SYSTEM_INSTRUCTION
 
     mcp_server_command: str = field(default_factory=lambda: sys.executable)
@@ -53,7 +54,23 @@ class AgentConfig:
 
     def __post_init__(self):
         if self.api_key is None:
-            self.api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+            self.api_key = (
+                os.getenv("DEEPSEEK_API_KEY")
+                or os.getenv("OPENAI_API_KEY")
+                or os.getenv("GEMINI_API_KEY")
+            )
+
+        env_base = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("LLM_BASE_URL")
+        if env_base:
+            self.llm_base_url = env_base
+
+        env_provider = os.getenv("LLM_PROVIDER")
+        if env_provider:
+            self.llm_provider = env_provider
+
+        env_model = os.getenv("MODEL_NAME")
+        if env_model:
+            self.model_name = env_model
 
         if self.mcp_server_cwd is None:
             self.mcp_server_cwd = str(_MCP_SERVER_DIR)
@@ -75,8 +92,8 @@ class AgentConfig:
     @classmethod
     def from_env(cls) -> "AgentConfig":
         return cls(
-            llm_provider=os.getenv("LLM_PROVIDER", "gemini"),
-            model_name=os.getenv("MODEL_NAME", "gemini-2.5-flash"),
-            api_key=os.getenv("GEMINI_API_KEY"),
+            llm_provider=os.getenv("LLM_PROVIDER", "deepseek"),
+            model_name=os.getenv("MODEL_NAME", "deepseek-v4-flash"),
+            api_key=os.getenv("DEEPSEEK_API_KEY"),
             max_steps=int(os.getenv("MAX_STEPS", "10")),
         )

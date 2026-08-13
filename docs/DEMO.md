@@ -18,7 +18,7 @@ cd components
 # one-time in this venv (if you see No module named mcp / agent_cli):
 #   pip install -e ".[test]"
 #   pip install -e "mcp-server[test]"
-# agent_cli/.env with GEMINI_API_KEY=
+# agent_cli/.env with DEEPSEEK_API_KEY=
 python -m agent_cli "List pods in citrus and summarize unhealthy ones."
 ```
 
@@ -41,6 +41,8 @@ Cleanup:
 ```powershell
 kubectl delete -f infra/chaos/pod-kill-frontend.yaml
 ```
+
+Labeled eval (healthy baseline + frontend kill + checkout kill): [EVAL.md](EVAL.md).
 
 ## D. Optional HTTP MCP
 

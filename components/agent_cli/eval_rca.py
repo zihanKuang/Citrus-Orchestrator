@@ -5,7 +5,7 @@
   python -m agent_cli.eval_rca --scenario healthy-baseline
   python -m agent_cli.eval_rca --all
 
-Needs: cluster + citrus namespace + Chaos Mesh (for kill scenarios) + GEMINI_API_KEY.
+Needs: cluster + citrus namespace + Chaos Mesh (for kill scenarios) + DEEPSEEK_API_KEY.
 Does not need Chaos Mesh for healthy-baseline.
 """
 from __future__ import annotations
@@ -117,7 +117,7 @@ async def _run_scenarios(
 ) -> List[Score]:
     config = AgentConfig()
     if not config.api_key:
-        print("Error: GEMINI_API_KEY is not set")
+        print("Error: DEEPSEEK_API_KEY is not set")
         sys.exit(1)
 
     agent = ReActAgent(config)

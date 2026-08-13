@@ -25,8 +25,8 @@ async def main():
     
     parser.add_argument(
         "--model",
-        default="gemini-2.5-flash",
-        help="LLM model to use (default: gemini-2.5-flash)"
+        default=None,
+        help="LLM model (default: MODEL_NAME env or deepseek-v4-flash)",
     )
     
     parser.add_argument(
@@ -60,17 +60,18 @@ async def main():
     
     # Create config
     config = AgentConfig(
-        model_name=args.model,
         max_steps=args.max_steps,
         log_level="DEBUG" if args.verbose else "INFO",
         mcp_url=args.mcp_url,
     )
-    
-    # Validate API key
+    if args.model:
+        config.model_name = args.model
+
     if not config.api_key:
-        print("Error: GEMINI_API_KEY environment variable not set")
+        print("Error: DEEPSEEK_API_KEY environment variable not set")
         print("\nSet it with:")
-        print("  export GEMINI_API_KEY='your-api-key'")
+        print("  copy agent_cli\\.env.example agent_cli\\.env")
+        print("  then put your key in DEEPSEEK_API_KEY=")
         sys.exit(1)
     
     # Create and initialize agent
