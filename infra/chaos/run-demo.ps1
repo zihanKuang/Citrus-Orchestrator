@@ -10,7 +10,7 @@
 param(
     [string]$Namespace = "citrus",
     [string]$Selector = "app.kubernetes.io/component=frontend",
-    [int]$WaitSeconds = 45
+    [int]$WaitSeconds = 25
 )
 
 $ErrorActionPreference = "Stop"

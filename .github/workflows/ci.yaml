@@ -115,6 +115,7 @@ jobs:
           echo "Checking documentation files..."
           test -f README.md && echo "README.md exists"
           test -f docs/DEPLOYMENT.md && echo "DEPLOYMENT.md exists"
+          test -f docs/EVAL.md && echo "EVAL.md exists"
           test -f scripts/README.md && echo "scripts/README.md exists"
           test -f scripts/deployment/README.md && echo "deployment/README.md exists"
 

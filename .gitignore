@@ -16,3 +16,6 @@ node_modules/
 citrus-template/*
 
 .docs/*
+
+# RCA eval runs (generated)
+data/eval/
