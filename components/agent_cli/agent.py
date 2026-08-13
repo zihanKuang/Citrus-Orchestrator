@@ -40,7 +40,6 @@ class ReActAgent:
                 timeout_seconds=config.tool_timeout_seconds,
             )
         self.llm_client = LLMClient(
-            provider=config.llm_provider,
             model_name=config.model_name,
             api_key=config.api_key,
             system_instruction=config.system_instruction,

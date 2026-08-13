@@ -90,15 +90,11 @@ def messages_for_api(
 class LLMClient:
     def __init__(
         self,
-        provider: str,
         model_name: str,
         api_key: str,
         system_instruction: str = "",
         base_url: str = DEFAULT_BASE_URL,
     ):
-        if provider not in ("deepseek", "openai"):
-            raise ValueError(f"Unsupported LLM provider: {provider}")
-        self.provider = provider
         self.model_name = model_name
         self.api_key = api_key
         self.system_instruction = system_instruction
