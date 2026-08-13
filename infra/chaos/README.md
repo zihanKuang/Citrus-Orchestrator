@@ -13,4 +13,9 @@ kubectl get pods -n citrus
 # 3) diagnose
 cd components
 python -m agent_cli "What happened to frontend in citrus? RCA + validate_recovery."
+
+# or the labeled eval (3 scenarios, hard-rule score)
+python -m agent_cli.eval_rca --all
 ```
+
+See [docs/EVAL.md](../../docs/EVAL.md).
