@@ -1,0 +1,23 @@
+# =============================================================================
+# Chaos Experiment: Kill one checkout pod (one-shot)
+# =============================================================================
+# Same pattern as pod-kill-frontend.yaml, different workload.
+# Used by the RCA eval set to check the agent is not hardcoded to "frontend".
+# =============================================================================
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kill-otel-checkout
+  namespace: citrus
+  labels:
+    app: citrus-chaos
+    experiment: pod-kill-checkout
+spec:
+  action: pod-kill
+  mode: one
+  duration: "60s"
+  selector:
+    namespaces:
+      - citrus
+    labelSelectors:
+      "app.kubernetes.io/component": "checkout"
