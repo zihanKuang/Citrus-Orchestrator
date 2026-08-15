@@ -19,3 +19,6 @@ citrus-template/*
 
 # RCA eval runs (generated)
 data/eval/
+data/memory/
+data/audit/
+data/webhook/
