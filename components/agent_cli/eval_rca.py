@@ -24,6 +24,7 @@ from .agent import ReActAgent
 from .config import AgentConfig
 from .eval_scenarios import SCENARIOS, Scenario, scenario_by_id
 from .eval_score import Score, score
+from .memory import annotate_latest_hit
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -91,7 +92,7 @@ def _print_table(results: List[Score]) -> None:
     print("=" * 72)
 
 
-def _save(out_dir: Path, results: List[Score]) -> Path:
+def _save(out_dir: Path, results: List[Score], extra: dict | None = None) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     path = out_dir / f"rca_eval_{stamp}.json"
@@ -103,9 +104,84 @@ def _save(out_dir: Path, results: List[Score]) -> Path:
         ),
         "results": [r.as_dict() for r in results],
     }
+    if extra:
+        payload.update(extra)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\nWrote {path}")
     return path
+
+
+def compare_runs(baseline: dict, current: dict) -> dict:
+    """Side-by-side of two eval JSON files. Honest deltas, no spin."""
+    by_b = {r["scenario_id"]: r for r in baseline.get("results") or []}
+    by_c = {r["scenario_id"]: r for r in current.get("results") or []}
+    rows = []
+    for sid in by_b:
+        b = by_b[sid]
+        c = by_c.get(sid) or {}
+        dur_b = b.get("duration_s")
+        dur_c = c.get("duration_s")
+        tools_b = b.get("tool_calls")
+        tools_c = c.get("tool_calls")
+        delta_dur = None
+        if isinstance(dur_b, (int, float)) and isinstance(dur_c, (int, float)):
+            delta_dur = round(float(dur_c) - float(dur_b), 2)
+        delta_tools = None
+        if isinstance(tools_b, (int, float)) and isinstance(tools_c, (int, float)):
+            delta_tools = int(tools_c) - int(tools_b)
+        rows.append({
+            "scenario_id": sid,
+            "hit_baseline": b.get("root_cause_hit"),
+            "hit_current": c.get("root_cause_hit"),
+            "evidence_baseline": b.get("evidence_level"),
+            "evidence_current": c.get("evidence_level"),
+            "duration_s_baseline": dur_b,
+            "duration_s_current": dur_c,
+            "delta_duration_s": delta_dur,
+            "tool_calls_baseline": tools_b,
+            "tool_calls_current": tools_c,
+            "delta_tool_calls": delta_tools,
+        })
+    hits_b = sum(1 for r in by_b.values() if r.get("root_cause_hit"))
+    hits_c = sum(1 for sid in by_b if (by_c.get(sid) or {}).get("root_cause_hit"))
+    n = len(by_b)
+    fewer_tools = sum(
+        1 for r in rows
+        if isinstance(r["delta_tool_calls"], int) and r["delta_tool_calls"] < 0
+    )
+    verdict = (
+        "n=3 上未见提升"
+        if hits_c <= hits_b and fewer_tools == 0
+        else "hit rate or tool-call count moved — see rows"
+    )
+    if n != 3:
+        verdict = f"compared {n} overlapping scenarios — {verdict}"
+    return {
+        "hit_rate_baseline": baseline.get("hit_rate"),
+        "hit_rate_current": current.get("hit_rate"),
+        "hits_baseline": f"{hits_b}/{n}",
+        "hits_current": f"{hits_c}/{n}",
+        "scenarios_with_fewer_tools": fewer_tools,
+        "verdict": verdict,
+        "rows": rows,
+    }
+
+
+def _print_compare(cmp: dict) -> None:
+    print("\n" + "=" * 72)
+    print("eval compare (baseline -> current)")
+    print("-" * 72)
+    print(f"hit rate: {cmp['hits_baseline']} -> {cmp['hits_current']}")
+    print(f"{'scenario':<24} {'hit':<12} {'ev':<12} {'sec d':<10} {'tools d'}")
+    print("-" * 72)
+    for r in cmp["rows"]:
+        hit = f"{r['hit_baseline']}->{r['hit_current']}"
+        ev = f"{r['evidence_baseline']}->{r['evidence_current']}"
+        print(f"{r['scenario_id']:<24} {hit:<12} {ev:<12} "
+              f"{str(r['delta_duration_s']):<10} {r['delta_tool_calls']}")
+    print("-" * 72)
+    print(f"verdict: {cmp['verdict']}")
+    print("=" * 72)
 
 
 async def _run_scenarios(
@@ -114,8 +190,14 @@ async def _run_scenarios(
     skip_inject: bool,
     no_cleanup: bool,
     out_dir: Path,
+    memory_enabled: bool,
+    memory_path: Path | None,
 ) -> List[Score]:
-    config = AgentConfig()
+    config = AgentConfig(
+        memory_enabled=memory_enabled,
+        memory_path=str(memory_path) if memory_path else None,
+        writes_interactive=False,
+    )
     if not config.api_key:
         print("Error: DEEPSEEK_API_KEY is not set")
         sys.exit(1)
@@ -130,8 +212,14 @@ async def _run_scenarios(
             try:
                 if not skip_inject:
                     _inject(scenario)
-                answer = await agent.run(scenario.query)
+                answer = await agent.run(scenario.query, scenario=scenario.id)
                 result = score(scenario, answer, agent.stats)
+                if memory_enabled:
+                    annotate_latest_hit(
+                        scenario.id,
+                        result.root_cause_hit,
+                        path=memory_path,
+                    )
                 results.append(result)
                 _print_score(result)
             except Exception as exc:
@@ -150,7 +238,10 @@ async def _run_scenarios(
         await agent.cleanup()
 
     _print_table(results)
-    _save(out_dir, results)
+    _save(out_dir, results, extra={
+        "memory_enabled": memory_enabled,
+        "memory_path": str(memory_path) if memory_path else None,
+    })
     return results
 
 
@@ -163,7 +254,37 @@ def main() -> None:
     parser.add_argument("--skip-inject", action="store_true", help="Do not apply/delete Chaos Mesh")
     parser.add_argument("--no-cleanup", action="store_true", help="Leave the Chaos CR in the cluster")
     parser.add_argument("--out-dir", type=Path, default=_DEFAULT_OUT)
+    parser.add_argument(
+        "--no-memory",
+        action="store_true",
+        help="Disable postmortem read/write (baseline runs)",
+    )
+    parser.add_argument(
+        "--memory-path",
+        type=Path,
+        default=None,
+        help="JSONL path for postmortems (default: data/memory/postmortems.jsonl)",
+    )
+    parser.add_argument(
+        "--compare",
+        nargs=2,
+        metavar=("BASELINE_JSON", "CURRENT_JSON"),
+        help="Diff two eval JSON files and exit (no cluster)",
+    )
     args = parser.parse_args()
+
+    if args.compare:
+        left = json.loads(Path(args.compare[0]).read_text(encoding="utf-8"))
+        right = json.loads(Path(args.compare[1]).read_text(encoding="utf-8"))
+        cmp = compare_runs(left, right)
+        _print_compare(cmp)
+        out = Path(args.compare[1]).with_name("ablation_compare.json")
+        if args.out_dir:
+            out = Path(args.out_dir) / "ablation_compare.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(cmp, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"\nWrote {out}")
+        return
 
     if args.list or args.dry_run:
         for s in SCENARIOS:
@@ -188,6 +309,8 @@ def main() -> None:
         skip_inject=args.skip_inject,
         no_cleanup=args.no_cleanup,
         out_dir=args.out_dir,
+        memory_enabled=not args.no_memory,
+        memory_path=args.memory_path,
     ))
 
 

@@ -20,14 +20,49 @@ python -m agent_cli.eval_rca --list
 python -m agent_cli.eval_rca --dry-run
 
 # live (needs cluster + Chaos Mesh + DEEPSEEK_API_KEY)
-python -m agent_cli.eval_rca --scenario healthy-baseline
-python -m agent_cli.eval_rca --all
+python -m agent_cli.eval_rca --all --no-memory   # freeze a baseline
+python -m agent_cli.eval_rca --all               # memory on (ablation)
+python -m agent_cli.eval_rca --compare ..\data\eval\baseline.json ..\data\eval\rca_eval_<stamp>.json
 ```
 
 `--all` writes `data/eval/rca_eval_<timestamp>.json` (gitignored).
 
 `--skip-inject` runs the agent against whatever is already in the cluster
 (useful if you already ran `.\infra\chaos\run-demo.ps1`).
+
+`--no-memory` is how the baseline was frozen: same agent, no JSONL hints.
+
+## Frozen baseline (2026-08-13, DeepSeek, memory off)
+
+| scenario | hit | evidence | duration_s | tool_calls |
+|----------|-----|----------|------------|------------|
+| healthy-baseline | True | HIGH | 14.31 | 7 |
+| pod-kill-frontend | True | HIGH | 8.46 | 5 |
+| pod-kill-checkout | True | HIGH | 8.53 | 4 |
+
+Root-cause hit rate: **3/3**. File: `data/eval/baseline.json` (gitignored).
+
+`healthy-baseline` HIT here because the cluster was *not* clean: `frontend-proxy` was crash-looping (Ready=False, 2293 restarts). The phrase rules accept "healthy/running/ready" in the body; the agent named the real unhealthy pod and did not invent Chaos Mesh. That is a HIT on the ruler, not a claim that the namespace was fine.
+
+## Memory ablation (same cluster, memory on)
+
+Postmortems go to JSONL only when the evidence stamp is not LOW. The next query
+gets keyword-overlap hints. Live rerun 2026-08-13 vs the frozen baseline:
+
+| scenario | hit | evidence | duration_s (base → mem) | tools (base → mem) |
+|----------|-----|----------|-------------------------|--------------------|
+| healthy-baseline | True | HIGH | 14.31 → 23.59 | 7 → 10 |
+| pod-kill-frontend | True | HIGH | 8.46 → 7.92 | 5 → 4 |
+| pod-kill-checkout | True | HIGH | 8.53 → 7.18 | 4 → 4 |
+
+Hit rate stayed **3/3**. Memory did inject (1 hint on frontend, 2 on checkout).
+frontend used one fewer tool; checkout was flat. healthy-baseline used *more*
+tools because the previous eval's Killing events were still in the 15-minute
+window, and that scenario starts with an empty JSONL — so the extra work is
+not a memory effect.
+
+Honest line for a resume: **n=3 上未见可归因于记忆的提升**. One-tool movement
+on a single scenario is noise.
 
 ## What the numbers mean
 
@@ -42,5 +77,5 @@ Wrong-service stories fail (checkout scenario + frontend-only answer = miss).
 
 ```powershell
 cd components
-python -m pytest agent_cli/tests/test_eval_score.py -q
+python -m pytest agent_cli/tests/test_eval_score.py agent_cli/tests/test_eval_compare.py -q
 ```
