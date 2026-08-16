@@ -2,12 +2,21 @@
 import asyncio
 import logging
 import time
-from typing import List, Dict, Any, Optional
+from pathlib import Path
+from typing import List, Dict, Any
 from datetime import datetime
 
 from .config import AgentConfig
 from .evidence import assess, attach_footer
+from .eval_score import split_answer
+from .gated_writes import GATED_TOOLS, audit, decide, stdin_is_tty
 from .mcp_client import MCPClient
+from .memory import (
+    DEFAULT_PATH as MEMORY_DEFAULT_PATH,
+    append_postmortem,
+    format_prefix,
+    retrieve,
+)
 from .llm_client import LLMClient
 from .retry_utils import get_retry_delay
 from .logging_utils import log_agent_debug, log_agent_info, log_agent_error
@@ -49,6 +58,9 @@ class ReActAgent:
         self.messages: List[Dict[str, Any]] = []
         self.tools: List[Dict[str, Any]] = []
         self.stats = self._empty_stats()
+        self.last_check = None
+        # Tests inject a fake approver. Interactive CLI uses stdin y/n.
+        self.approve_writes = None
 
         self._setup_logging()
         log_agent_info("Agent initialized")
@@ -95,12 +107,13 @@ class ReActAgent:
         """Cleanup resources"""
         await self.mcp_client.disconnect()
     
-    async def run(self, user_query: str) -> str:
+    async def run(self, user_query: str, *, scenario: str = "unknown") -> str:
         """
         Run ReAct loop for user query
         
         Args:
             user_query: User's question or request
+            scenario: Optional eval/fault label stored with the postmortem
             
         Returns:
             Final answer from agent
@@ -108,9 +121,18 @@ class ReActAgent:
         # fresh stats each query (interactive mode)
         self.stats = self._empty_stats()
         self.stats["start_time"] = time.time()
+        self.last_check = None
+
+        prompt = user_query
+        if self.config.memory_enabled:
+            hits = retrieve(user_query, path=self._memory_path())
+            prefix = format_prefix(hits)
+            if prefix:
+                prompt = prefix + user_query
+                log_agent_info(f"Injected {len(hits)} postmortem hint(s)")
         
         self.messages = [
-            {"role": "user", "content": user_query}
+            {"role": "user", "content": prompt}
         ]
         
         log_agent_info(f"Starting ReAct loop for: {user_query}")
@@ -128,8 +150,31 @@ class ReActAgent:
             self._print_stats()
 
         check = assess(user_query, result, self.stats)
+        self.last_check = check
         log_agent_info(f"Evidence check: {check.level}")
-        return attach_footer(result, check)
+        stamped = attach_footer(result, check)
+
+        if self.config.memory_enabled:
+            body, _footer = split_answer(stamped)
+            written = append_postmortem(
+                query=user_query,
+                answer=body,
+                tools_used=self.stats.get("tool_calls") or {},
+                evidence_level=check.level,
+                scenario=scenario,
+                path=self._memory_path(),
+            )
+            if written:
+                log_agent_info(f"Postmortem written ({check.level}) → {written}")
+            else:
+                log_agent_info("Postmortem skipped (evidence LOW)")
+
+        return stamped
+
+    def _memory_path(self) -> Path:
+        if self.config.memory_path:
+            return Path(self.config.memory_path)
+        return MEMORY_DEFAULT_PATH
     
     async def _react_loop(self) -> str:
         for step in range(self.config.max_steps):
@@ -180,9 +225,48 @@ class ReActAgent:
             arguments = tool_call["function"]["arguments"]
             
             log_agent_debug(f"  -> {tool_name}({arguments})")
+
+            if tool_name in GATED_TOOLS:
+                interactive = (
+                    self.config.writes_interactive
+                    if self.config.writes_interactive is not None
+                    else stdin_is_tty()
+                )
+                denied = decide(
+                    tool_name,
+                    arguments,
+                    self.stats,
+                    interactive=interactive,
+                    approve_fn=self.approve_writes,
+                )
+                if denied:
+                    audit(
+                        tool_name=tool_name,
+                        arguments=arguments,
+                        decision="denied",
+                        result=denied,
+                    )
+                    result = denied
+                    self.messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "content": result,
+                    })
+                    self.stats["tool_calls"][tool_name] = \
+                        self.stats["tool_calls"].get(tool_name, 0) + 1
+                    log_agent_info(f"  <- gated write blocked: {denied}")
+                    continue
             
             result = await self._execute_tool_with_retry(tool_name, arguments)
             result = self._truncate_if_needed(result)
+
+            if tool_name in GATED_TOOLS:
+                audit(
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    decision="approved",
+                    result=result,
+                )
             
             self.messages.append({
                 "role": "tool",
