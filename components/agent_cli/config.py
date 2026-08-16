@@ -51,6 +51,11 @@ class AgentConfig:
     log_level: str = "INFO"
     log_to_file: bool = False
 
+    memory_enabled: bool = True
+    memory_path: Optional[str] = None
+    # None = follow stdin.isatty(). False in eval/webhook. True in interactive CLI.
+    writes_interactive: Optional[bool] = None
+
     def __post_init__(self):
         if self.api_key is None:
             self.api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -79,6 +84,14 @@ class AgentConfig:
         env_prompt = os.getenv("AGENT_SYSTEM_INSTRUCTION")
         if env_prompt:
             self.system_instruction = env_prompt
+
+        env_mem = os.getenv("CITRUS_MEMORY")
+        if env_mem is not None and env_mem.strip() != "":
+            self.memory_enabled = env_mem.strip().lower() not in {"0", "false", "off", "no"}
+
+        env_mem_path = os.getenv("CITRUS_MEMORY_PATH")
+        if env_mem_path:
+            self.memory_path = env_mem_path
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
