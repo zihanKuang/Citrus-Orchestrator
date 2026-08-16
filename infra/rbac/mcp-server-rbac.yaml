@@ -4,7 +4,8 @@
 # Least-privilege security model:
 # - Read-only permissions (get, list, watch)
 # - Namespace-scoped (citrus only)
-# - No destructive operations (delete, create, update)
+# - No destructive operations by default (delete, create, update)
+# - Optional writes: infra/rbac/mcp-server-gated-writes.yaml (not bound)
 #
 # Components:
 # 1. ServiceAccount: Pod identity (auto-injected JWT token)

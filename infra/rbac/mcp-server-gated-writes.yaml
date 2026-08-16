@@ -1,0 +1,23 @@
+# =============================================================================
+# OPTIONAL gated-write Role. Not bound by default.
+#
+# In-cluster MCP still uses mcp-server-readonly (get/list/watch only).
+# Local stdio agent uses the operator's kubeconfig, which can restart/scale.
+# Bind this Role only if you deliberately want in-cluster writes — and even
+# then the CLI y/n gate in agent_cli/gated_writes.py still applies.
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mcp-server-gated-writes
+  namespace: citrus
+  labels:
+    app: mcp-server
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch", "update"]
+  # rollout restart / scale also touch replicasets
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list"]
