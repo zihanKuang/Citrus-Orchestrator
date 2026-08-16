@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import requests
+
+_DEPLOY_NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+_MAX_REPLICAS = 3
+_MIN_REPLICAS = 1
 
 
 def resolve_namespace(explicit: Optional[str] = None) -> str:
@@ -452,3 +458,90 @@ class KubernetesTools:
             )
         except Exception as e:
             return f"Unexpected error: {str(e)}"
+
+    @staticmethod
+    def _check_deploy_name(name: str) -> Optional[str]:
+        if not name or not _DEPLOY_NAME.match(name) or len(name) > 63:
+            return (
+                f"ERROR: invalid deployment name {name!r}. "
+                "Expected a DNS-1123 label (lowercase, digits, hyphens)."
+            )
+        return None
+
+    def _kubectl_unchecked(self, *args: str) -> subprocess.CompletedProcess:
+        cmd = ["kubectl", "-n", self.namespace, *args]
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+    def _deployment_selector(self, name: str) -> str:
+        return f"app.kubernetes.io/component={name}"
+
+    async def _recovery_after_write(self, name: str) -> str:
+        # ReplicaSet needs a moment to roll. Short wait, then the existing
+        # read-only checker. Agent prompt also asks for validate_recovery.
+        time.sleep(5)
+        selector = self._deployment_selector(name)
+        result = await self.validate_recovery(selector, min_ready=1)
+        if result.startswith("FAIL: No pods found"):
+            fallback = f"app={name}"
+            extra = await self.validate_recovery(fallback, min_ready=1)
+            return (
+                f"{result}\nRetried selector '{fallback}':\n{extra}"
+            )
+        return result
+
+    async def restart_deployment(self, name: str) -> str:
+        """Low-risk write: kubectl rollout restart. Always followed by validate_recovery."""
+        bad = self._check_deploy_name(name)
+        if bad:
+            return bad
+        probe = self._kubectl_unchecked("get", "deployment", name, "-o", "name")
+        if probe.returncode != 0:
+            err = (probe.stderr or probe.stdout or "not found").strip()
+            return f"ERROR: deployment {name!r} not found in {self.namespace}: {err}"
+        rolled = self._kubectl_unchecked("rollout", "restart", f"deployment/{name}")
+        if rolled.returncode != 0:
+            err = (rolled.stderr or rolled.stdout or "rollout restart failed").strip()
+            return f"ERROR: rollout restart failed for {name!r}: {err}"
+        recovery = await self._recovery_after_write(name)
+        return (
+            f"restarted deployment/{name} in {self.namespace}\n"
+            f"{(rolled.stdout or '').strip()}\n"
+            f"validate_recovery:\n{recovery}"
+        )
+
+    async def scale_deployment(self, name: str, replicas: int) -> str:
+        """Low-risk write: scale within 1..3 replicas, then validate_recovery."""
+        bad = self._check_deploy_name(name)
+        if bad:
+            return bad
+        try:
+            replicas_i = int(replicas)
+        except (TypeError, ValueError):
+            return f"ERROR: replicas must be an integer, got {replicas!r}"
+        if replicas_i < _MIN_REPLICAS or replicas_i > _MAX_REPLICAS:
+            return (
+                f"ERROR: replicas={replicas_i} out of low-risk range "
+                f"{_MIN_REPLICAS}..{_MAX_REPLICAS}"
+            )
+        probe = self._kubectl_unchecked("get", "deployment", name, "-o", "name")
+        if probe.returncode != 0:
+            err = (probe.stderr or probe.stdout or "not found").strip()
+            return f"ERROR: deployment {name!r} not found in {self.namespace}: {err}"
+        scaled = self._kubectl_unchecked(
+            "scale", f"deployment/{name}", f"--replicas={replicas_i}"
+        )
+        if scaled.returncode != 0:
+            err = (scaled.stderr or scaled.stdout or "scale failed").strip()
+            return f"ERROR: scale failed for {name!r}: {err}"
+        recovery = await self._recovery_after_write(name)
+        return (
+            f"scaled deployment/{name} to replicas={replicas_i} in {self.namespace}\n"
+            f"{(scaled.stdout or '').strip()}\n"
+            f"validate_recovery:\n{recovery}"
+        )
