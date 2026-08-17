@@ -176,6 +176,49 @@ async def list_tools() -> list[Tool]:
                 "required": ["pod_selector"],
             },
         ),
+        Tool(
+            name="restart_deployment",
+            description=(
+                "GATED WRITE: kubectl rollout restart a Deployment in "
+                f"'{NAMESPACE}'. The CLI asks a human y/n before this runs; "
+                "eval and webhook sessions always deny it. After restart the "
+                "tool itself calls validate_recovery. Never assume it ran."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Deployment name (e.g. frontend, checkout)",
+                    }
+                },
+                "required": ["name"],
+            },
+        ),
+        Tool(
+            name="scale_deployment",
+            description=(
+                "GATED WRITE: scale a Deployment in "
+                f"'{NAMESPACE}' to 1–3 replicas. CLI y/n required. "
+                "Eval/webhook deny. Calls validate_recovery after scaling."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Deployment name (e.g. frontend, checkout)",
+                    },
+                    "replicas": {
+                        "type": "integer",
+                        "description": "Desired replica count (1–3)",
+                        "minimum": 1,
+                        "maximum": 3,
+                    },
+                },
+                "required": ["name", "replicas"],
+            },
+        ),
     ]
 
 
@@ -215,6 +258,15 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             result = await k8s_tools.validate_recovery(
                 pod_selector=arguments["pod_selector"],
                 min_ready=arguments.get("min_ready", 1),
+            )
+
+        elif name == "restart_deployment":
+            result = await k8s_tools.restart_deployment(name=arguments["name"])
+
+        elif name == "scale_deployment":
+            result = await k8s_tools.scale_deployment(
+                name=arguments["name"],
+                replicas=arguments["replicas"],
             )
 
         else:

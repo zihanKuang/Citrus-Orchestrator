@@ -102,6 +102,18 @@ python -m agent_cli.eval_rca --all           # live: 3 scenarios, writes data/ev
 
 See [docs/EVAL.md](docs/EVAL.md). Hit = the answer named the labeled fault. Evidence HIGH/MEDIUM/LOW is the separate tool-call stamp.
 
+Frozen baseline (2026-08-13, memory off): **3/3 HIT**, all HIGH, ~8–14s. Ablation (memory on) is compared with `--compare`.
+
+### 3c. Alertmanager webhook (optional)
+
+```powershell
+cd components
+$env:CITRUS_WEBHOOK_TOKEN="change-me"
+python -m agent_cli.webhook --port 8088
+```
+
+See [docs/WEBHOOK.md](docs/WEBHOOK.md). Auth / groupKey idempotency / per-service rate limit / degrade / card template. LOW evidence is not published as a root cause.
+
 ### 4. Optional: HTTP MCP (in-cluster)
 
 ```powershell
