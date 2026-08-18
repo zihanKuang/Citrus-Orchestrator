@@ -2,18 +2,33 @@
 
 A small HTTP service **outside** the ReAct loop. Auth, idempotency, rate limit,
 degrade, and a fixed card template are the engineering story. The model only
-fills the RCA body after live tools run.
+fills the RCA body after live tools run. Blast radius, suggested actions, and
+evidence links are filled by **hard rules**, not a second LLM.
 
-## Run
+## Run (host process first)
 
 ```powershell
 cd components
 $env:CITRUS_WEBHOOK_TOKEN="change-me"
-python -m agent_cli.webhook --port 8088
+python -m agent_cli.webhook --host 0.0.0.0 --port 8088
 ```
 
-Alertmanager is disabled in `deploy/helm/monitoring-stack-values.yaml`. Until
-that is enabled, POST a sample payload:
+`--host 0.0.0.0` is required if in-cluster Alertmanager will POST via
+`host.docker.internal`. Keep this process running.
+
+## Wire Alertmanager (optional)
+
+Helm values enable Alertmanager and point it at
+`http://host.docker.internal:8088/webhook` with the same Bearer token.
+Apply the demo rule (fires when a `citrus` pod is not Ready — `frontend-proxy`
+on this cluster often already is):
+
+```powershell
+kubectl apply -f infra/alerting/citrus-pod-not-ready.yaml
+```
+
+If `host.docker.internal` is not routed from the cluster, **curl is the
+supported degrade path** — do not put the Agent in-cluster just for this:
 
 ```powershell
 curl -s -X POST http://127.0.0.1:8088/webhook `
@@ -21,6 +36,16 @@ curl -s -X POST http://127.0.0.1:8088/webhook `
   -H "Content-Type: application/json" `
   -d '{"groupKey":"{}/{alertname=PodNotReady}","status":"firing","commonLabels":{"service":"frontend","alertname":"PodNotReady"},"alerts":[{"status":"firing","labels":{"service":"frontend","alertname":"PodNotReady"},"annotations":{"summary":"frontend is not ready"}}]}'
 ```
+
+## Card fields
+
+| field | source |
+|-------|--------|
+| `suspected_root_cause` | Agent answer body; **null** when evidence is LOW |
+| `blast_radius.alerted` | Alertmanager `service` / `app` / … labels |
+| `blast_radius.one_hop_neighbors` | Jaeger adjacency, one hop (empty if Jaeger is down) |
+| `suggested_actions` | Rules: LOW → do not treat as RCA; otherwise inspect + propose gated writes (not executed) |
+| `evidence_links` | Tools that actually ran → kubectl / Prometheus UI hint. No fake PromQL permalinks |
 
 ## Gates
 
@@ -36,9 +61,10 @@ curl -s -X POST http://127.0.0.1:8088/webhook `
 
 If several services fire in one payload, `agent_cli/topology.py` asks Jaeger
 `/api/dependencies` and attaches undirected edges as a **hint** in the query.
-Jaeger down → empty adjacency, alerts still processed. Not Neo4j.
+The same neighbors fill `blast_radius.one_hop_neighbors`. Jaeger down → empty
+adjacency, alerts still processed. Not Neo4j.
 
 ## Writes
 
 Webhook sessions set `writes_interactive=False`. `restart_deployment` /
-`scale_deployment` are denied even if the model proposes them.
+`scale_deployment` / `rollback_deployment` are denied even if the model proposes them.

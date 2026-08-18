@@ -109,10 +109,10 @@ Frozen baseline (2026-08-13, memory off): **3/3 HIT**, all HIGH, ~8–14s. Ablat
 ```powershell
 cd components
 $env:CITRUS_WEBHOOK_TOKEN="change-me"
-python -m agent_cli.webhook --port 8088
+python -m agent_cli.webhook --host 0.0.0.0 --port 8088
 ```
 
-See [docs/WEBHOOK.md](docs/WEBHOOK.md). Auth / groupKey idempotency / per-service rate limit / degrade / card template. LOW evidence is not published as a root cause.
+See [docs/WEBHOOK.md](docs/WEBHOOK.md). Card fields: suspected root cause, blast radius, suggested actions, evidence links. LOW evidence is not published as a root cause. If in-cluster Alertmanager cannot reach `host.docker.internal`, curl is the degrade path.
 
 ### 4. Optional: HTTP MCP (in-cluster)
 
