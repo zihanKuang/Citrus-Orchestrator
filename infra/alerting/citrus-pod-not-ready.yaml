@@ -1,0 +1,32 @@
+# Demo rule: a citrus pod has been NotReady for 2 minutes.
+# frontend-proxy on the local cluster is often already in that state.
+#
+# Prometheus discovers this because monitoring-stack-values.yaml sets
+# ruleSelectorNilUsesHelmValues: false and ruleNamespaceSelector: {}.
+#
+# Apply: kubectl apply -f infra/alerting/citrus-pod-not-ready.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: citrus-pod-not-ready
+  namespace: citrus
+  labels:
+    app: citrus
+    release: monitoring
+spec:
+  groups:
+    - name: citrus.pods
+      interval: 30s
+      rules:
+        - alert: CitrusPodNotReady
+          expr: |
+            kube_pod_status_ready{namespace="citrus",condition="true"} == 0
+          for: 2m
+          labels:
+            severity: warning
+            namespace: citrus
+          annotations:
+            summary: "Pod {{ $labels.pod }} in citrus is not Ready"
+            description: >
+              kube_pod_status_ready is 0 for {{ $labels.pod }}.
+              Host webhook (if running) should receive this as CitrusPodNotReady.
