@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -60,7 +61,7 @@ def alert_services(payload: Dict[str, Any]) -> List[str]:
         alerts = []
     common = payload.get("commonLabels") or {}
     for labels in [common, *[a.get("labels") or {} for a in alerts if isinstance(a, dict)]]:
-        for key in ("service", "app", "job", "deployment", "component"):
+        for key in ("service", "app", "job", "deployment", "component", "pod"):
             value = str(labels.get(key) or "").strip()
             if value and value not in seen:
                 seen.add(value)
@@ -98,6 +99,74 @@ def build_query(payload: Dict[str, Any], edges: List[Tuple[str, str]]) -> str:
     )
 
 
+_EVIDENCE_HOW = {
+    "list_pods": "kubectl get pods -n citrus",
+    "get_recent_events": "kubectl get events -n citrus --sort-by=.lastTimestamp",
+    "get_pod_status": "kubectl get pods -n citrus -l <selector>",
+    "get_pod_logs": "kubectl logs -n citrus -l <selector> --tail=50",
+    "query_prometheus": (
+        "Prometheus UI (kubectl port-forward -n citrus "
+        "svc/monitoring-kube-prometheus-prometheus 9090:9090). "
+        "PromQL from this run is not stored as a permalink."
+    ),
+    "validate_recovery": "read-only Ready check on the named pod selector",
+}
+
+
+def blast_radius(
+    services: List[str],
+    graph: Optional[ServiceGraph] = None,
+) -> Dict[str, List[str]]:
+    """Alert labels plus one-hop Jaeger neighbors. Labels, not a model story."""
+    alerted = [s for s in services if s]
+    one_hop: List[str] = []
+    seen = set(alerted)
+    if graph is not None:
+        for svc in alerted:
+            for neighbor in sorted(graph.neighbors(svc)):
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    one_hop.append(neighbor)
+    return {"alerted": alerted, "one_hop_neighbors": one_hop}
+
+
+_POD_REPLICA = re.compile(r"-[a-z0-9]{5,10}-[a-z0-9]{5}$")
+
+
+def deploy_targets(names: List[str]) -> List[str]:
+    """Names that can be restart/rollback targets. Drop ReplicaSet pod ids."""
+    return [n for n in names if n and not _POD_REPLICA.search(n)]
+
+
+def suggested_actions(level: str, services: List[str]) -> List[str]:
+    """Hard rules. Webhook never executes writes."""
+    if level == "LOW":
+        return [
+            "do not treat this card as a root cause",
+            "gather live evidence (list_pods / get_recent_events) before acting",
+        ]
+    actions = [
+        "inspect events and logs for the alerted services",
+        "call validate_recovery after any change",
+    ]
+    for svc in deploy_targets(services):
+        actions.append(
+            f"propose restart_deployment / rollback_deployment on {svc} "
+            "after CLI y/n (webhook will not execute writes)"
+        )
+    return actions
+
+
+def evidence_links(tools_used: Dict[str, int]) -> List[Dict[str, str]]:
+    """Map tools that actually ran to a kubectl/UI entry. No fake permalinks."""
+    out: List[Dict[str, str]] = []
+    for name in sorted(tools_used or {}):
+        how = _EVIDENCE_HOW.get(name)
+        if how:
+            out.append({"tool": name, "how": how, "calls": str(tools_used[name])})
+    return out
+
+
 def render_card(
     *,
     payload: Dict[str, Any],
@@ -106,6 +175,7 @@ def render_card(
     query: str,
     edges: List[Tuple[str, str]],
     status: str = "ok",
+    graph: Optional[ServiceGraph] = None,
 ) -> Dict[str, Any]:
     body, _footer = split_answer(answer)
     check = assess(query, answer, stats)
@@ -117,15 +187,19 @@ def render_card(
     else:
         root_cause = body[:2000]
         note = ""
+    tools = dict(stats.get("tool_calls") or {})
     return {
         "status": status,
         "group_key": payload.get("groupKey"),
         "services": services,
         "related_via_topology": [list(e) for e in edges],
+        "blast_radius": blast_radius(services, graph),
+        "suggested_actions": suggested_actions(check.level, services),
+        "evidence_links": evidence_links(tools),
         "suspected_root_cause": root_cause,
         "evidence_level": check.level,
         "evidence_reasons": list(check.reasons),
-        "tools": dict(stats.get("tool_calls") or {}),
+        "tools": tools,
         "note": note,
     }
 
@@ -237,6 +311,7 @@ class WebhookApp:
             stats=stats,
             query=query,
             edges=edges,
+            graph=self.graph,
         )
         return 200, card
 
@@ -325,7 +400,7 @@ def main() -> None:
     runner.start()
     app = WebhookApp(token=args.token, runner=runner.run)
     server = ThreadingHTTPServer((args.host, args.port), _make_handler(app))
-    print(f"webhook listening on http://{args.host}:{args.port}/webhook")
+    print(f"webhook listening on http://{args.host}:{args.port}/webhook", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
