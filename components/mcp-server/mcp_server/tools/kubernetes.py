@@ -545,3 +545,23 @@ class KubernetesTools:
             f"{(scaled.stdout or '').strip()}\n"
             f"validate_recovery:\n{recovery}"
         )
+
+    async def rollback_deployment(self, name: str) -> str:
+        """Low-risk write: kubectl rollout undo. Always followed by validate_recovery."""
+        bad = self._check_deploy_name(name)
+        if bad:
+            return bad
+        probe = self._kubectl_unchecked("get", "deployment", name, "-o", "name")
+        if probe.returncode != 0:
+            err = (probe.stderr or probe.stdout or "not found").strip()
+            return f"ERROR: deployment {name!r} not found in {self.namespace}: {err}"
+        undone = self._kubectl_unchecked("rollout", "undo", f"deployment/{name}")
+        if undone.returncode != 0:
+            err = (undone.stderr or undone.stdout or "rollout undo failed").strip()
+            return f"ERROR: rollout undo failed for {name!r}: {err}"
+        recovery = await self._recovery_after_write(name)
+        return (
+            f"rolled back deployment/{name} in {self.namespace}\n"
+            f"{(undone.stdout or '').strip()}\n"
+            f"validate_recovery:\n{recovery}"
+        )
