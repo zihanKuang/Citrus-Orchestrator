@@ -64,6 +64,16 @@ def test_has_live_evidence():
     assert has_live_evidence({"tool_calls": {"list_pods": 1}})
 
 
+def test_rollback_is_gated_non_interactive():
+    reason = decide(
+        "rollback_deployment",
+        {"name": "frontend"},
+        {"tool_calls": {"list_pods": 1}},
+        interactive=False,
+    )
+    assert "non-interactive" in reason
+
+
 def test_audit_appends_jsonl(tmp_path: Path):
     path = tmp_path / "writes.jsonl"
     audit(

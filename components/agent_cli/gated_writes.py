@@ -15,7 +15,11 @@ from typing import Any, Callable, Dict, Optional
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_AUDIT_PATH = _REPO_ROOT / "data" / "audit" / "writes.jsonl"
 
-GATED_TOOLS = frozenset({"restart_deployment", "scale_deployment"})
+GATED_TOOLS = frozenset({
+    "restart_deployment",
+    "scale_deployment",
+    "rollback_deployment",
+})
 EVIDENCE_BEFORE_WRITE = (
     "list_pods",
     "get_recent_events",

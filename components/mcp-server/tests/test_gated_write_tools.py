@@ -16,3 +16,9 @@ def test_scale_rejects_out_of_range():
     zero = asyncio.run(tools.scale_deployment("frontend", 0))
     assert "out of low-risk range" in high
     assert "out of low-risk range" in zero
+
+
+def test_rollback_rejects_path_injection():
+    tools = KubernetesTools(namespace="citrus", use_kubectl=True)
+    result = asyncio.run(tools.rollback_deployment("../kube-system"))
+    assert result.startswith("ERROR: invalid")
