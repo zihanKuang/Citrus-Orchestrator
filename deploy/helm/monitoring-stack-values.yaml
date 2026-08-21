@@ -14,8 +14,42 @@ prometheusOperator:
     enabled: false  # Don't mount TLS secrets
 
 # Alertmanager Configuration
+# Host webhook: python -m agent_cli.webhook --host 0.0.0.0 --port 8088
+# Token must match CITRUS_WEBHOOK_TOKEN. Change before any non-demo use.
+# Kind/Docker Desktop: Alertmanager POSTs to host.docker.internal.
+# If that hostname does not route, use curl (docs/WEBHOOK.md) — do not
+# deploy the Agent in-cluster just to receive alerts.
 alertmanager:
-  enabled: false  # Disabled for now - enable when adding alerting workflow
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 4h
+      routes:
+        - receiver: citrus-webhook
+          matchers:
+            - alertname = CitrusPodNotReady
+    receivers:
+      - name: "null"
+      - name: citrus-webhook
+        webhook_configs:
+          - url: http://host.docker.internal:8088/webhook
+            send_resolved: true
+            http_config:
+              bearer_token: "change-me"
+  alertmanagerSpec:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
 
 # Grafana Configuration
 grafana:
@@ -41,6 +75,9 @@ prometheus:
     # Without this, application metrics won't be scraped
     serviceMonitorSelectorNilUsesHelmValues: false
     serviceMonitorNamespaceSelector: {}  # Empty = watch all namespaces
+    # Pick up PrometheusRule objects in citrus (infra/alerting/*.yaml)
+    ruleSelectorNilUsesHelmValues: false
+    ruleNamespaceSelector: {}
     
     # Resource limits
     resources:

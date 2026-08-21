@@ -1,15 +1,16 @@
 """Alertmanager webhook gates — no live agent, no cluster."""
 import json
+import time
 from pathlib import Path
 
 from agent_cli.topology import ServiceGraph
-from agent_cli.webhook import Gate, WebhookApp, build_query, render_card
+from agent_cli.webhook import Gate, WebhookApp, build_query, deploy_targets, render_card
 
 
 def _frozen_graph() -> ServiceGraph:
     graph = ServiceGraph()
     graph._graph = {}
-    graph._fetched_at = 1.0
+    graph._fetched_at = time.time()
     graph.ttl_s = 10**9
     return graph
 
@@ -65,6 +66,9 @@ def test_bearer_auth_and_card_high():
     assert card["evidence_level"] == "HIGH"
     assert card["suspected_root_cause"]
     assert "frontend" in (card["suspected_root_cause"] or "")
+    assert card["blast_radius"]["alerted"] == ["frontend"]
+    assert any("get_recent_events" == row["tool"] for row in card["evidence_links"])
+    assert any("CLI y/n" in a for a in card["suggested_actions"])
 
 
 def test_low_stamp_does_not_publish_root_cause():
@@ -77,6 +81,9 @@ def test_low_stamp_does_not_publish_root_cause():
     assert card["evidence_level"] == "LOW"
     assert card["suspected_root_cause"] is None
     assert "not published" in card["note"]
+    assert card["blast_radius"]["alerted"] == ["frontend"]
+    assert any("do not treat this card as a root cause" in a for a in card["suggested_actions"])
+    assert card["evidence_links"] == []
 
 
 def test_idempotent_group_key():
@@ -137,3 +144,27 @@ def test_render_card_records_topology_edges():
         edges=[("checkout", "frontend")],
     )
     assert card["related_via_topology"] == [["checkout", "frontend"]]
+
+
+def test_deploy_targets_drops_replicaset_pod_names():
+    names = ["frontend", "frontend-proxy-79db7788bd-ppvk2", "checkout"]
+    assert deploy_targets(names) == ["frontend", "checkout"]
+
+
+def test_blast_radius_includes_one_hop_neighbors():
+    graph = _frozen_graph()
+    graph._graph = {"frontend": {"checkout", "cart"}, "checkout": {"frontend"}, "cart": {"frontend"}}
+    card = render_card(
+        payload=_payload(),
+        answer="frontend recovered\n\n---\nEvidence check: HIGH\n",
+        stats={
+            "tool_calls": {"list_pods": 1, "get_recent_events": 1, "validate_recovery": 1},
+            "errors": 0,
+        },
+        query="Alertmanager firing on frontend. Short RCA, then validate_recovery.",
+        edges=[("checkout", "frontend")],
+        graph=graph,
+    )
+    assert card["blast_radius"]["alerted"] == ["frontend"]
+    assert set(card["blast_radius"]["one_hop_neighbors"]) == {"cart", "checkout"}
+    assert any(row["tool"] == "list_pods" for row in card["evidence_links"])

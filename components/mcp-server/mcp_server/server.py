@@ -219,6 +219,24 @@ async def list_tools() -> list[Tool]:
                 "required": ["name", "replicas"],
             },
         ),
+        Tool(
+            name="rollback_deployment",
+            description=(
+                "GATED WRITE: kubectl rollout undo a Deployment in "
+                f"'{NAMESPACE}' (previous ReplicaSet). CLI y/n required. "
+                "Eval/webhook deny. Calls validate_recovery after undo."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Deployment name (e.g. frontend, checkout)",
+                    }
+                },
+                "required": ["name"],
+            },
+        ),
     ]
 
 
@@ -268,6 +286,9 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
                 name=arguments["name"],
                 replicas=arguments["replicas"],
             )
+
+        elif name == "rollback_deployment":
+            result = await k8s_tools.rollback_deployment(name=arguments["name"])
 
         else:
             raise ValueError(f"Unknown tool: {name}")
